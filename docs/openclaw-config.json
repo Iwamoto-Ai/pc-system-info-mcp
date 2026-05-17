@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "pc-system-info": {
+      "command": "node",
+      "args": [
+        "/path/to/pc-system-info-mcp/dist/index.js"
+      ],
+      "description": "PC system monitoring: CPU/GPU temperature, RAM, VRAM, fans, disk, network",
+      "env": {}
+    }
+  }
+}

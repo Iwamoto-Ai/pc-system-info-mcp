@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "pc-system-info": {
+      "command": "node",
+      "args": [
+        "C:\\Users\\YourName\\pc-system-info-mcp\\dist\\index.js"
+      ],
+      "env": {}
+    }
+  }
+}
