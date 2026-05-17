@@ -6,7 +6,9 @@
 [![MCP](https://img.shields.io/badge/MCP-Compatible-purple.svg)](https://modelcontextprotocol.io/)
 
 PCのシステム情報を取得する **Model Context Protocol (MCP) サーバー**です。  
-CPU/GPU温度・稼働状況、RAM/VRAM、ファン回転数、ディスク、ネットワーク情報を Claude Desktop および OpenClaw から直接確認できます。
+CPU/GPU温度・稼働状況、RAM/VRAM、ファン回転数、ディスク、ネットワーク情報を Claude Desktop および OpenClaw から自然言語で確認できます。
+
+プロンプト例　「現在のPCの温度や状況を教えてください」
 
 > **⚠️ 注意**: WMICコマンドは廃止されたため使用していません。Windows では `Get-CimInstance`（PowerShell）を使用します。
 
