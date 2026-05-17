@@ -554,7 +554,7 @@ GPU情報 (AMD/Intel):
 
 MIT License - 詳細は [LICENSE](LICENSE) を参照
 
-Copyright 2026  Tsuyoshi Iwamoto   All rights reserved.
+Copyright 2026　岩本 剛　All rights reserved.
 
 ---
 
