@@ -75,7 +75,7 @@ async function fetchSystemInfo(category: string): Promise<JsonValue> {
 
   try {
     const { stdout, stderr } = await execAsync(command, {
-      timeout: 30_000,
+      timeout: 60_000,
       maxBuffer: 10 * 1024 * 1024,
       shell: IS_WSL ? "/bin/bash" : undefined,
     });

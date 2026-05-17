@@ -6,9 +6,7 @@
 [![MCP](https://img.shields.io/badge/MCP-Compatible-purple.svg)](https://modelcontextprotocol.io/)
 
 PCのシステム情報を取得する **Model Context Protocol (MCP) サーバー**です。  
-CPU/GPU温度・稼働状況、RAM/VRAM、ファン回転数、ディスク、ネットワーク情報を Claude Desktop および OpenClaw から自然言語で確認できます。
-
-プロンプト例　「現在のPCの温度や状況を教えてください」
+CPU/GPU温度・稼働状況、RAM/VRAM、ファン回転数、ディスク、ネットワーク情報を Claude Desktop および OpenClaw から直接確認できます。
 
 > **⚠️ 注意**: WMICコマンドは廃止されたため使用していません。Windows では `Get-CimInstance`（PowerShell）を使用します。
 
@@ -127,28 +125,65 @@ chmod +x scripts/macos/get-system-info.sh
 
 ## ⚙️ OpenClaw への設定
 
-OpenClaw v2026.5.x以上 では、MCPサーバーの設定キーが mcpServers（Claude Desktop形式）から mcp.servers に変更されています。
-トップレベルに mcpServers を書いても未認識エラーになります。
-openclaw mcp set コマンドで登録をお勧めします。
+> **⚠️ 重要**: OpenClaw では Claude Desktop の `mcpServers` キーは使用できません。  
+> OpenClaw 専用の設定方法を使ってください。
 
-OpenClaw v2026.5.x 以前の場合。設定ファイル（通常 `~/.openclaw/config.json`）に以下を追加:
+### 推奨モデル
 
-```json
-{
-  "mcpServers": {
-    "pc-system-info": {
-      "command": "node",
-      "args": [
-        "/path/to/pc-system-info-mcp/dist/index.js"
-      ],
-      "description": "PC system monitoring: CPU/GPU temperature, RAM, VRAM, fans, disk, network"
-    }
-  }
-}
+OpenClaw でMCPツール呼び出しを安定して使うには **mistral-nemo** を推奨します。
+
+| モデル | ツール呼び出し | 日本語 | VRAM | 備考 |
+|--------|--------------|--------|------|------|
+| **mistral-nemo** | ◎ 安定 | ○ | ~8GB | **推奨** |
+| qwen3:8b | △ 不安定 | ◎ | ~5GB | ツール呼び出しに失敗することがある |
+| qwen3-japanese | ✗ 非対応 | ◎ | ~5GB | MCPツール呼び出し不可 |
+
+```bash
+# mistral-nemo のインストール（Windows PowerShell）
+ollama pull mistral-nemo  # 約7.1GB
 ```
 
-OpenClaw v2026.5.x 以降の場合。設定ファイル（通常 `~/.openclaw/config.json`）に以下を追加:
-または、openclaw mcp set コマンドを使用し登録してください。
+### ステップ1: CLIコマンドで登録（推奨）
+
+`openclaw.json` を直接編集せず、CLIで登録するのが確実です:
+
+```bash
+# Linux / WSL
+openclaw mcp set pc-system-info '{
+  "command": "node",
+  "args": ["/home/YourName/pc-system-info-mcp/dist/index.js"]
+}'
+
+# 登録確認
+openclaw mcp list
+openclaw mcp show pc-system-info
+```
+
+### ステップ2: モデルを登録・設定
+
+```bash
+# mistral-nemoをOpenClawに登録
+openclaw config set models.providers.ollama.models   '[{"id":"mistral-nemo","name":"Mistral NeMo 12B","input":["text"],"contextWindow":128000,"maxTokens":4096}]'
+
+# デフォルトモデルに設定
+openclaw config set agents.defaults.model '{"primary":"ollama/mistral-nemo"}'
+
+# 思考モードをオフ（誤動作防止）
+openclaw config set agents.defaults.thinkingDefault '"off"'
+```
+
+### ステップ3: ゲートウェイ再起動・確認
+
+```bash
+openclaw gateway restart
+openclaw status | grep -i "model\|session"
+```
+
+`mistral-nemo` が表示されれば成功です。
+
+### openclaw.json に直接記述する場合
+
+`~/.openclaw/openclaw.json` に追記する場合は **`mcp.servers`** キーを使います（`mcpServers` は無効）:
 
 ```json
 {
@@ -157,7 +192,7 @@ OpenClaw v2026.5.x 以降の場合。設定ファイル（通常 `~/.openclaw/co
       "pc-system-info": {
         "command": "node",
         "args": [
-          "/Users/YourName/pc-system-info-mcp/dist/index.js"
+          "/home/YourName/pc-system-info-mcp/dist/index.js"
         ]
       }
     }
@@ -165,35 +200,41 @@ OpenClaw v2026.5.x 以降の場合。設定ファイル（通常 `~/.openclaw/co
 }
 ```
 
-OpenClaw v2026.5.x 以降の場合。openclaw mcp set コマンドを使って登録する場合。
+### WSL (Windows Subsystem for Linux) からの使用
+
+WSL内で動かす場合、MCPサーバーは自動的にWSLを検出してWindows側の `powershell.exe` を呼び出します。  
+`wslpath` コマンドが利用可能であることを確認してください。
+
 ```bash
+# WSLでの登録例
 openclaw mcp set pc-system-info '{
   "command": "node",
-  "args": ["/Users/YourName/pc-system-info-mcp/dist/index.js"]
+  "args": ["/home/YourName/pc-system-info-mcp/dist/index.js"]
 }'
 ```
 
+> **WSLの注意事項**:  
+> - `powershell.exe` がWSLのPATHに含まれている必要があります  
+> - パスが見つからない場合: `/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe` をフルパスで指定  
+> - Windows側のOllamaに接続するため、Ollamaは必ずWindows側で起動してください
 
-### WSL (Windows Subsystem for Linux) からの使用
+### AGENTS.md へのツール使用指示追加（推奨）
 
-WSL内からも自動的にWindows側のPowerShellを呼び出します。  
-WSL環境で実行する場合は `wslpath` コマンドが利用可能であることを確認してください。
+ローカルLLMがMCPツールを確実に呼び出すよう、`~/.openclaw/workspace/AGENTS.md` に以下を追加することを推奨します:
 
-```json
-{
-  "mcpServers": {
-    "pc-system-info": {
-      "command": "node",
-      "args": [
-        "/home/YourName/pc-system-info-mcp/dist/index.js"
-      ]
-    }
-  }
-}
+```markdown
+## PC System Info MCP Tools
+When user asks about CPU, GPU, RAM, temperature, fan, disk, or network,
+ALWAYS call the appropriate tool directly:
+- get_cpu_info: CPU load and temperature
+- get_gpu_info: GPU temperature and VRAM  
+- get_ram_info: RAM usage
+- get_fan_info: Fan speeds RPM
+- get_disk_info: Disk usage and throughput
+- get_network_info: Network adapters
+- get_all_system_info: ALL metrics at once (recommended)
+Do NOT answer from memory. Always call the tool first.
 ```
-
-> **WSLの注意事項**: `powershell.exe` がWSLから呼び出せる必要があります。  
-> パスが認識されない場合: `/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe`
 
 ---
 
@@ -215,6 +256,25 @@ WSL環境で実行する場合は `wslpath` コマンドが利用可能である
 
 > どちらも実行中でない場合、CPU温度・ファン情報は `null` になります。  
 > NVIDIA GPU温度は nvidia-smi 経由のため、上記ソフト不要です。
+
+#### ⚠️ Intel Core Ultra（Meteor Lake / Arrow Lake）世代の注意
+
+Intel Core Ultra 125U / 165U / 185H などの第14世代以降のCPUは、2025年時点で  
+LibreHardwareMonitor・OpenHardwareMonitor ともに **CPU Package温度を取得できません**。
+
+代替として、同一ダイ上にある **内蔵GPU（Intel Arc Graphics）の温度を近似値**として取得します。  
+その場合 `tempSource` に `"iGPU temp used as approximation (Intel Core Ultra)"` と明示されます。
+
+| CPU世代 | CPU温度 | iGPU温度 | 取得方法 |
+|---------|---------|---------|---------|
+| Intel Core 12/13世代 | ✅ 取得可能 | - | LibreHardwareMonitor WMI |
+| **Intel Core Ultra (Meteor Lake)** | ❌ 取得不可 | ❌ 取得不可 | OHM/LHM ともに未対応（2025年時点） |
+| AMD Ryzen | ✅ 取得可能 | - | LibreHardwareMonitor WMI |
+
+> **Intel Core Ultra 125U / 165U / 185H などのMeteor Lake世代**では、  
+> OpenHardwareMonitor・LibreHardwareMonitor ともにCPU温度・iGPU温度を取得できません。  
+> `temperatureC: null` + `tempNote` に理由が明示されます。  
+> NVIDIA外付けGPUの温度は nvidia-smi 経由で正常取得できます。
 
 ### macOS: CPU温度
 
@@ -382,6 +442,76 @@ $env:PATH += ";C:\Program Files\NVIDIA Corporation\NVSMI"
 
 ---
 
+## ❓ OpenClaw トラブルシューティング
+
+### `Unrecognized key: "mcpServers"` エラー
+
+OpenClaw では Claude Desktop 形式の `mcpServers` キーは使用できません。  
+CLIコマンドで登録してください:
+
+```bash
+openclaw mcp set pc-system-info '{
+  "command": "node",
+  "args": ["/home/YourName/pc-system-info-mcp/dist/index.js"]
+}'
+openclaw gateway restart
+```
+
+### ツールを呼び出さず엉뚱な返答をする
+
+ローカルLLMがMCPツールを無視して返答する場合:
+
+1. **モデルを mistral-nemo に切り替える**（最も効果的）
+```bash
+ollama pull mistral-nemo
+openclaw config set agents.defaults.model '{"primary":"ollama/mistral-nemo"}'
+openclaw gateway restart
+```
+
+2. **AGENTS.md にツール使用を明示する**
+```bash
+cat >> ~/.openclaw/workspace/AGENTS.md << 'AGEOF'
+
+## PC System Info MCP Tools
+When user asks about CPU, GPU, RAM, temperature, fan, disk, or network,
+ALWAYS call the appropriate MCP tool. Do NOT answer from memory.
+- get_cpu_info, get_gpu_info, get_ram_info, get_fan_info
+- get_disk_info, get_network_info, get_all_system_info
+AGEOF
+```
+
+3. **英語で明示的に指示する**
+```
+Use get_all_system_info tool and show the result.
+```
+
+### Tool output が返ってこない（タイムアウト）
+
+PowerShellの起動に数秒かかるため、OpenClawのMCPタイムアウトを延長:
+
+```bash
+openclaw config set mcp.sessionIdleTtlMs 300000
+openclaw gateway restart
+```
+
+### `model not allowed` エラー
+
+OllamaのモデルをOpenClawに明示的に登録する必要があります:
+
+```bash
+openclaw config set models.providers.ollama.models   '[{"id":"mistral-nemo","name":"Mistral NeMo 12B","input":["text"],"contextWindow":128000,"maxTokens":4096}]'
+```
+
+### セッションが古いモデルを使い続ける
+
+```bash
+# セッションをリセットしてモデルを反映
+openclaw gateway restart
+# ダッシュボードで /new と入力して新しいセッションを開始
+```
+
+---
+
 ## 📝 Windows技術詳細
 
 ### 使用API（WMIC廃止後の代替）
@@ -417,6 +547,8 @@ GPU情報 (AMD/Intel):
 ## 📄 ライセンス
 
 MIT License - 詳細は [LICENSE](LICENSE) を参照
+
+Copyright 2026  Tsuyoshi Iwamoto   All rights reserved.
 
 ---
 

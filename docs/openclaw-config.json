@@ -1,12 +1,35 @@
 {
-  "mcpServers": {
-    "pc-system-info": {
-      "command": "node",
-      "args": [
-        "/path/to/pc-system-info-mcp/dist/index.js"
-      ],
-      "description": "PC system monitoring: CPU/GPU temperature, RAM, VRAM, fans, disk, network",
-      "env": {}
+  "mcp": {
+    "servers": {
+      "pc-system-info": {
+        "command": "node",
+        "args": [
+          "/home/YourName/pc-system-info-mcp/dist/index.js"
+        ]
+      }
+    }
+  },
+  "agents": {
+    "defaults": {
+      "model": {
+        "primary": "ollama/mistral-nemo"
+      },
+      "thinkingDefault": "off"
+    }
+  },
+  "models": {
+    "providers": {
+      "ollama": {
+        "models": [
+          {
+            "id": "mistral-nemo",
+            "name": "Mistral NeMo 12B",
+            "input": ["text"],
+            "contextWindow": 128000,
+            "maxTokens": 4096
+          }
+        ]
+      }
     }
   }
 }

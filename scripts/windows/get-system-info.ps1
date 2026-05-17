@@ -10,47 +10,92 @@ param(
 $ErrorActionPreference = "SilentlyContinue"
 
 function Get-CPUInfo {
-    $cpu = Get-CimInstance -ClassName Win32_Processor | Select-Object -First 1
+    $cpu     = Get-CimInstance -ClassName Win32_Processor | Select-Object -First 1
     $loadPct = (Get-CimInstance -ClassName Win32_Processor).LoadPercentage
-    
-    # CPU temperature via MSAcpi_ThermalZoneTemperature (requires admin)
-    $tempK = $null
-    $tempC = $null
+
+    # Per-core load via OpenHardwareMonitor (more accurate than WMI LoadPercentage)
+    $coreLoads = $null
     try {
-        $thermal = Get-CimInstance -Namespace "root/WMI" -ClassName MSAcpi_ThermalZoneTemperature -ErrorAction Stop
-        if ($thermal) {
-            $tempK = ($thermal | Select-Object -First 1).CurrentTemperature
-            $tempC = [math]::Round(($tempK / 10) - 273.15, 1)
+        $ohmSensors = Get-CimInstance -Namespace "root/OpenHardwareMonitor" -ClassName Sensor -ErrorAction Stop
+        $coreSensors = $ohmSensors | Where-Object {
+            $_.SensorType -eq "Load" -and $_.Name -match "Core #"
+        } | Sort-Object { [int]($_.Name -replace "[^0-9]","") }
+        if ($coreSensors) {
+            $coreLoads = $coreSensors | ForEach-Object {
+                @{ core = $_.Name; loadPct = [math]::Round($_.Value, 1) }
+            }
+            # Use OHM CPU Total as overall load if available
+            $ohmTotal = $ohmSensors | Where-Object {
+                $_.SensorType -eq "Load" -and $_.Name -eq "CPU Total"
+            } | Select-Object -First 1
+            if ($ohmTotal) { $loadPct = [math]::Round($ohmTotal.Value, 1) }
         }
     } catch {}
 
-    # Fallback: LibreHardwareMonitor / OpenHardwareMonitor WMI namespace
-    # NOTE: WQL Filter on SensorType is unreliable in LHM - fetch all sensors and filter in PowerShell
+    $tempC       = $null
+    $tempSrcName = $null
+    $tempNote    = $null
+
+    # 1) MSAcpi_ThermalZoneTemperature
+    try {
+        $thermal = Get-CimInstance -Namespace "root/WMI" -ClassName MSAcpi_ThermalZoneTemperature -ErrorAction Stop
+        if ($thermal) {
+            $calc = [math]::Round(($thermal[0].CurrentTemperature / 10) - 273.15, 1)
+            if ($calc -gt -10 -and $calc -lt 125) {
+                $tempC       = $calc
+                $tempSrcName = "MSAcpi"
+            }
+        }
+    } catch {}
+
+    # 2) LibreHardwareMonitor / OpenHardwareMonitor WMI
+    # Priority 1: CPU Package / Core temps (true CPU temp)
     foreach ($ns in @("root/LibreHardwareMonitor", "root/OpenHardwareMonitor")) {
         if ($null -ne $tempC) { break }
         try {
             $allSensors = Get-CimInstance -Namespace $ns -ClassName Sensor -ErrorAction Stop
             if (-not $allSensors) { continue }
 
-            # Priority 1: "CPU Package" or "CPU (Tctl/Tdie)" — whole-CPU temp
             $cpuPkg = $allSensors | Where-Object {
                 $_.SensorType -eq "Temperature" -and
-                ($_.Name -match "Package|Tctl|Tdie|CPU$")
+                ($_.Name -match "CPU Package|CPU \(Tctl|CPU Die|Core #|Package")
             } | Select-Object -First 1
 
-            # Priority 2: Any sensor with "CPU" or "Core" in the name
-            $cpuAny = $allSensors | Where-Object {
-                $_.SensorType -eq "Temperature" -and
-                ($_.Name -match "CPU|Core")
-            } | Select-Object -First 1
-
-            $chosen = if ($cpuPkg) { $cpuPkg } elseif ($cpuAny) { $cpuAny } else { $null }
-
-            if ($chosen -and $null -ne $chosen.Value) {
-                $tempC = [math]::Round([double]$chosen.Value, 1)
-                $tempSrcName = "$ns ($($chosen.Name))"
+            if ($cpuPkg -and $null -ne $cpuPkg.Value) {
+                $tempC       = [math]::Round([double]$cpuPkg.Value, 1)
+                $tempSrcName = "$ns ($($cpuPkg.Name))"
             }
         } catch {}
+    }
+
+    # Priority 2: iGPU temp as CPU approximation (Intel Core Ultra / integrated graphics)
+    # Intel Core Ultra (Meteor Lake/Arrow Lake) does not expose CPU Package temp
+    # iGPU temperature is on the same die and is the best available approximation
+    if ($null -eq $tempC) {
+        foreach ($ns in @("root/LibreHardwareMonitor", "root/OpenHardwareMonitor")) {
+            if ($null -ne $tempC) { break }
+            try {
+                $allSensors = Get-CimInstance -Namespace $ns -ClassName Sensor -ErrorAction Stop
+                if (-not $allSensors) { continue }
+
+                $igpuTemp = $allSensors | Where-Object {
+                    $_.SensorType -eq "Temperature" -and
+                    ($_.Name -match "Intel.*Graphics|Intel.*GPU|iGPU|Intel Arc") -and
+                    ($_.Identifier -notmatch "nvidiagpu|amdgpu")
+                } | Select-Object -First 1
+
+                if ($igpuTemp -and $null -ne $igpuTemp.Value) {
+                    $tempC       = [math]::Round([double]$igpuTemp.Value, 1)
+                    $tempSrcName = "$ns ($($igpuTemp.Name))"
+                    $tempNote    = "CPU temp unavailable - iGPU temp used as approximation (Intel Core Ultra)"
+                }
+            } catch {}
+        }
+    }
+
+    # Note for Intel Core Ultra where CPU temp is unavailable
+    if ($null -eq $tempC -and $cpu.Name -match "Ultra|Core Ultra") {
+        $tempNote = "Intel Core Ultra CPU temperature not supported by current monitoring tools"
     }
 
     return @{
@@ -59,8 +104,10 @@ function Get-CPUInfo {
         logicalCores = $cpu.NumberOfLogicalProcessors
         maxClockMHz  = $cpu.MaxClockSpeed
         load         = $loadPct
+        coreLoads    = $coreLoads
         temperatureC = $tempC
-        tempSource   = if ($null -ne $tempC) { $tempSrcName } else { $null }
+        tempSource   = $tempSrcName
+        tempNote     = $tempNote
         socket       = $cpu.SocketDesignation
     }
 }
@@ -68,8 +115,7 @@ function Get-CPUInfo {
 function Get-GPUInfo {
     $gpus = @()
 
-    # --- NVIDIA via nvidia-smi ---
-    $nvidiaSmi = $null
+    # NVIDIA via nvidia-smi
     $nvidiaPaths = @(
         "nvidia-smi",
         "C:\Windows\System32\nvidia-smi.exe",
@@ -79,67 +125,72 @@ function Get-GPUInfo {
         try {
             $out = & $p --query-gpu=name,temperature.gpu,utilization.gpu,memory.used,memory.total,fan.speed,power.draw,power.limit,clocks.current.graphics,clocks.current.memory --format=csv,noheader,nounits 2>$null
             if ($LASTEXITCODE -eq 0 -and $out) {
-                $nvidiaSmi = $out
+                $lines = $out -split "`n" | Where-Object { $_.Trim() -ne "" }
+                foreach ($line in $lines) {
+                    $f = $line -split "," | ForEach-Object { $_.Trim() }
+                    $gpus += @{
+                        vendor         = "NVIDIA"
+                        name           = $f[0]
+                        temperatureC   = if ($f[1] -match '^\d') { [int]$f[1] } else { $null }
+                        utilizationPct = if ($f[2] -match '^\d') { [int]$f[2] } else { $null }
+                        vramUsedMB     = if ($f[3] -match '^\d') { [int]$f[3] } else { $null }
+                        vramTotalMB    = if ($f[4] -match '^\d') { [int]$f[4] } else { $null }
+                        fanSpeedPct    = if ($f[5] -match '^\d') { [int]$f[5] } else { $null }
+                        powerDrawW     = if ($f[6] -match '^\d') { [double]$f[6] } else { $null }
+                        powerLimitW    = if ($f[7] -match '^\d') { [double]$f[7] } else { $null }
+                        coreClockMHz   = if ($f[8] -match '^\d') { [int]$f[8] } else { $null }
+                        memClockMHz    = if ($f[9] -match '^\d') { [int]$f[9] } else { $null }
+                        source         = "nvidia-smi"
+                    }
+                }
                 break
             }
         } catch {}
     }
 
-    if ($nvidiaSmi) {
-        $lines = $nvidiaSmi -split "`n" | Where-Object { $_.Trim() -ne "" }
-        foreach ($line in $lines) {
-            $f = $line -split "," | ForEach-Object { $_.Trim() }
-            $gpus += @{
-                vendor          = "NVIDIA"
-                name            = $f[0]
-                temperatureC    = if ($f[1] -match '^\d') { [int]$f[1] } else { $null }
-                utilizationPct  = if ($f[2] -match '^\d') { [int]$f[2] } else { $null }
-                vramUsedMB      = if ($f[3] -match '^\d') { [int]$f[3] } else { $null }
-                vramTotalMB     = if ($f[4] -match '^\d') { [int]$f[4] } else { $null }
-                fanSpeedPct     = if ($f[5] -match '^\d') { [int]$f[5] } else { $null }
-                powerDrawW      = if ($f[6] -match '^\d') { [double]$f[6] } else { $null }
-                powerLimitW     = if ($f[7] -match '^\d') { [double]$f[7] } else { $null }
-                coreClockMHz    = if ($f[8] -match '^\d') { [int]$f[8] } else { $null }
-                memClockMHz     = if ($f[9] -match '^\d') { [int]$f[9] } else { $null }
-                source          = "nvidia-smi"
-            }
-        }
-    }
-
-    # --- Other GPUs via CIM (AMD / Intel) ---
-    $cimGpus = Get-CimInstance -ClassName Win32_VideoController | Where-Object { $_.Name -notmatch "Microsoft Basic" }
+    # Other GPUs via CIM (AMD / Intel)
+    $cimGpus = Get-CimInstance -ClassName Win32_VideoController |
+               Where-Object { $_.Name -notmatch "Microsoft Basic" }
     foreach ($g in $cimGpus) {
-        # Skip if already captured by nvidia-smi
-        $alreadyCaptured = $gpus | Where-Object { $_.name -and $g.Name -and $_.name.ToLower().Contains("nvidia") -and $g.Name.ToLower().Contains("nvidia") }
+        $alreadyCaptured = $gpus | Where-Object {
+            $_.name -and $g.Name -and
+            $_.name.ToLower().Contains("nvidia") -and
+            $g.Name.ToLower().Contains("nvidia")
+        }
         if ($alreadyCaptured) { continue }
 
         $vendor = "Unknown"
-        if ($g.Name -match "AMD|Radeon")  { $vendor = "AMD" }
-        if ($g.Name -match "Intel")       { $vendor = "Intel" }
-        if ($g.Name -match "NVIDIA")      { $vendor = "NVIDIA" }
+        if ($g.Name -match "AMD|Radeon") { $vendor = "AMD" }
+        if ($g.Name -match "Intel")      { $vendor = "Intel" }
+        if ($g.Name -match "NVIDIA")     { $vendor = "NVIDIA" }
 
-        # OHM / LHM temperature for non-NVIDIA (same fetch-all-then-filter approach)
-        $gpuTemp = $null
+        # GPU temp via LHM/OHM
+        $gpuTemp    = $null
+        $gpuTempSrc = $null
         foreach ($ns in @("root/LibreHardwareMonitor", "root/OpenHardwareMonitor")) {
             if ($null -ne $gpuTemp) { break }
             try {
                 $allSensors = Get-CimInstance -Namespace $ns -ClassName Sensor -ErrorAction Stop
                 $gpuSensor  = $allSensors | Where-Object {
-                    $_.SensorType -eq "Temperature" -and $_.Name -match "GPU"
+                    $_.SensorType -eq "Temperature" -and $_.Name -match "GPU Core|GPU"
+                } | Where-Object {
+                    $_.Identifier -notmatch "nvidiagpu"
                 } | Select-Object -First 1
                 if ($gpuSensor -and $null -ne $gpuSensor.Value) {
-                    $gpuTemp = [math]::Round([double]$gpuSensor.Value, 1)
+                    $gpuTemp    = [math]::Round([double]$gpuSensor.Value, 1)
+                    $gpuTempSrc = "$ns ($($gpuSensor.Name))"
                 }
             } catch {}
         }
 
         $gpus += @{
-            vendor         = $vendor
-            name           = $g.Name
-            temperatureC   = $gpuTemp
-            vramTotalMB    = if ($g.AdapterRAM) { [math]::Round($g.AdapterRAM / 1MB) } else { $null }
-            driverVersion  = $g.DriverVersion
-            source         = "CIM"
+            vendor        = $vendor
+            name          = $g.Name
+            temperatureC  = $gpuTemp
+            tempSource    = $gpuTempSrc
+            vramTotalMB   = if ($g.AdapterRAM) { [math]::Round($g.AdapterRAM / 1MB) } else { $null }
+            driverVersion = $g.DriverVersion
+            source        = "CIM"
         }
     }
 
@@ -147,8 +198,8 @@ function Get-GPUInfo {
 }
 
 function Get-RAMInfo {
-    $os  = Get-CimInstance -ClassName Win32_OperatingSystem
-    $cs  = Get-CimInstance -ClassName Win32_ComputerSystem
+    $os    = Get-CimInstance -ClassName Win32_OperatingSystem
+    $cs    = Get-CimInstance -ClassName Win32_ComputerSystem
     $dimms = Get-CimInstance -ClassName Win32_PhysicalMemory
 
     $slots = $dimms | ForEach-Object {
@@ -157,7 +208,9 @@ function Get-RAMInfo {
             capacityGB   = [math]::Round($_.Capacity / 1GB, 2)
             speedMHz     = $_.Speed
             manufacturer = $_.Manufacturer
-            type         = switch ($_.MemoryType) { 24 {"DDR3"} 26 {"DDR4"} 34 {"DDR5"} default {"Unknown"} }
+            type         = switch ($_.MemoryType) {
+                24 {"DDR3"} 26 {"DDR4"} 34 {"DDR5"} default {"Unknown"}
+            }
         }
     }
 
@@ -173,22 +226,27 @@ function Get-RAMInfo {
 function Get-FanInfo {
     $fans = @()
 
-    # OHM / LHM
+    # LHM / OHM
     foreach ($ns in @("root/OpenHardwareMonitor","root/LibreHardwareMonitor")) {
         try {
-            $f = Get-CimInstance -Namespace $ns -ClassName Sensor -Filter "SensorType='Fan'" -ErrorAction Stop
+            $allSensors = Get-CimInstance -Namespace $ns -ClassName Sensor -ErrorAction Stop
+            $f = $allSensors | Where-Object { $_.SensorType -eq "Fan" }
             if ($f) {
-                $fans = $f | ForEach-Object { @{ name = $_.Name; rpm = [int]$_.Value; source = $ns } }
+                $fans = $f | ForEach-Object {
+                    @{ name = $_.Name; rpm = [int]$_.Value; source = $ns }
+                }
                 break
             }
         } catch {}
     }
 
-    # Fallback: CIM fan (limited info)
+    # CIM fallback
     if ($fans.Count -eq 0) {
         try {
             $cimFans = Get-CimInstance -Namespace "root/WMI" -ClassName Win32_Fan -ErrorAction Stop
-            $fans = $cimFans | ForEach-Object { @{ name = $_.Name; rpm = $null; source = "CIM" } }
+            $fans = $cimFans | ForEach-Object {
+                @{ name = $_.Name; rpm = $null; source = "CIM" }
+            }
         } catch {}
     }
 
@@ -197,12 +255,11 @@ function Get-FanInfo {
 
 function Get-DiskInfo {
     $disks = Get-CimInstance -ClassName Win32_DiskDrive | ForEach-Object {
-        $disk = $_
+        $disk       = $_
         $partitions = Get-CimInstance -Query "ASSOCIATORS OF {Win32_DiskDrive.DeviceID='$($disk.DeviceID)'} WHERE AssocClass=Win32_DiskDriveToDiskPartition"
-        $volumes = $partitions | ForEach-Object {
+        $volumes    = $partitions | ForEach-Object {
             Get-CimInstance -Query "ASSOCIATORS OF {Win32_DiskPartition.DeviceID='$($_.DeviceID)'} WHERE AssocClass=Win32_LogicalDiskToPartition"
         }
-
         $volInfo = $volumes | ForEach-Object {
             @{
                 letter     = $_.DeviceID
@@ -212,18 +269,16 @@ function Get-DiskInfo {
                 filesystem = $_.FileSystem
             }
         }
-
         @{
-            model       = $disk.Model
-            sizeGB      = [math]::Round($disk.Size / 1GB, 2)
-            mediaType   = $disk.MediaType
-            interface   = $disk.InterfaceType
-            serialNumber= $disk.SerialNumber
-            volumes     = $volInfo
+            model        = $disk.Model
+            sizeGB       = [math]::Round($disk.Size / 1GB, 2)
+            mediaType    = $disk.MediaType
+            interface    = $disk.InterfaceType
+            serialNumber = $disk.SerialNumber
+            volumes      = $volInfo
         }
     }
 
-    # Disk IO via perf counters
     $diskIO = $null
     try {
         $counters = Get-Counter '\PhysicalDisk(_Total)\Disk Read Bytes/sec','\PhysicalDisk(_Total)\Disk Write Bytes/sec' -ErrorAction Stop
@@ -234,10 +289,7 @@ function Get-DiskInfo {
         }
     } catch {}
 
-    return @{
-        drives = $disks
-        io     = $diskIO
-    }
+    return @{ drives = $disks; io = $diskIO }
 }
 
 function Get-NetworkInfo {
@@ -252,7 +304,6 @@ function Get-NetworkInfo {
         }
     }
 
-    # Network throughput via perf counters
     $netIO = @()
     try {
         $instances = (Get-Counter "\Network Interface(*)\Bytes Received/sec" -ErrorAction Stop).CounterSamples |
@@ -268,18 +319,14 @@ function Get-NetworkInfo {
         }
     } catch {}
 
-    return @{
-        adapters   = $adapters
-        throughput = $netIO
-    }
+    return @{ adapters = $adapters; throughput = $netIO }
 }
 
 function Get-SystemOverview {
-    $os  = Get-CimInstance -ClassName Win32_OperatingSystem
-    $cs  = Get-CimInstance -ClassName Win32_ComputerSystem
-    $bios= Get-CimInstance -ClassName Win32_BIOS
-    $mb  = Get-CimInstance -ClassName Win32_BaseBoard
-
+    $os     = Get-CimInstance -ClassName Win32_OperatingSystem
+    $cs     = Get-CimInstance -ClassName Win32_ComputerSystem
+    $bios   = Get-CimInstance -ClassName Win32_BIOS
+    $mb     = Get-CimInstance -ClassName Win32_BaseBoard
     $uptime = (Get-Date) - $os.LastBootUpTime
 
     return @{
@@ -299,17 +346,17 @@ function Get-SystemOverview {
     }
 }
 
-# --- Main execution ---
+# Main
 $result = @{}
 
 switch ($Category.ToLower()) {
-    "cpu"       { $result.cpu     = Get-CPUInfo }
-    "gpu"       { $result.gpu     = Get-GPUInfo }
-    "ram"       { $result.ram     = Get-RAMInfo }
-    "fan"       { $result.fan     = Get-FanInfo }
-    "disk"      { $result.disk    = Get-DiskInfo }
-    "network"   { $result.network = Get-NetworkInfo }
-    "overview"  { $result.overview= Get-SystemOverview }
+    "cpu"      { $result.cpu      = Get-CPUInfo }
+    "gpu"      { $result.gpu      = Get-GPUInfo }
+    "ram"      { $result.ram      = Get-RAMInfo }
+    "fan"      { $result.fan      = Get-FanInfo }
+    "disk"     { $result.disk     = Get-DiskInfo }
+    "network"  { $result.network  = Get-NetworkInfo }
+    "overview" { $result.overview = Get-SystemOverview }
     default {
         $result.overview = Get-SystemOverview
         $result.cpu      = Get-CPUInfo
