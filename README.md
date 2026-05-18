@@ -558,7 +558,7 @@ GPU情報 (AMD/Intel):
 
 ## 📄 ライセンス
 
-MIT License - 詳細は [LICENSE](LICENSE) を参照
+Apache License Version 2.0 - 詳細は [LICENSE](LICENSE) を参照
 
 Copyright 2026　岩本 剛　All rights reserved.
 
