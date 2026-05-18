@@ -145,9 +145,9 @@ OpenClaw でMCPツール呼び出しを安定して使うには **mistral-nemo**
 
 | モデル | ツール呼び出し | 日本語 | VRAM | 備考 |
 |--------|--------------|--------|------|------|
-| **mistral-nemo** | ◎ 安定 | ○ | 8GB | **推奨** |
+| **mistral-nemo** | ◎ 安定 | ◎  | 8GB | **推奨** |
 | qwen3:8b | △ 不安定 | ○ | 5GB | ツール呼び出しに失敗する |
-| qwen3-japanese | ✗ 非対応 | ○ | 5GB | MCPツール呼び出し不可 |
+| qwen3:1.7b | ✗ 非対応 | ○ | 5GB | MCPツール呼び出し不可 |
 
 ```bash
 # mistral-nemo のインストール（Windows PowerShell）
