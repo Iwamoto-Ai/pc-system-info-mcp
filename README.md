@@ -147,7 +147,7 @@ chmod +x scripts/macos/get-system-info.sh
 
 ### 推奨モデル
 
-🦞 OpenClaw でMCPツール呼び出しを安定して使うには **nemotron-nano か mistral-nemo** 良いです。
+🦞 OpenClaw でMCPツール呼び出しを安定して使うには **nemotron-nano か mistral-nemo** が良いです。
 
 
 | モデル | ツール呼び出し | 日本語 | 使用VRAM容量 | 備考 |
@@ -223,7 +223,7 @@ openclaw status | grep -i "model\|session"
 }
 ```
 
-### WSL (Windows Subsystem for Linux) からの使用
+🦞 OpenClaw を WSL (Windows Subsystem for Linux) で使用する場合
 
 WSL内で動かす場合、MCPサーバーは自動的にWSLを検出してWindows側の `powershell.exe` を呼び出します。  
 `wslpath` コマンドが利用可能であることを確認してください。
