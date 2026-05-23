@@ -152,8 +152,8 @@ chmod +x scripts/macos/get-system-info.sh
 
 | モデル | ツール呼び出し | 日本語 | 使用VRAM容量 | 備考 |
 |--------|--------------|--------|------|------|
-| **nemotron-nano** | ◎ 安定 | ◎  | 9GB | **一番推奨** |
-| **mistral-nemo** | ◎ 安定 | ◎  | 9GB | **推奨** |
+| **nemotron-nano** | ◎ 安定 | ◎  | 12GB | **一番推奨** |
+| **mistral-nemo** | ◎ 安定 | ◎  | 12GB | **推奨** |
 | qwen3:8b | ✗ 不安定 | △ | 8GB | ツール呼び出しに失敗する |
 | qwen3:1.7b | ✗ 非対応 | △ | 6GB | MCPツール呼び出し不可 |
 
