@@ -100,7 +100,10 @@ Hermes Agent  v0.14.0 (2026.5.16) 以降
 > コンテキスト長の調整が必要な場合が多いです。（例、context_length: 65536　の行を追加）
 > 大量なトークンを必要とします。　不要なツールセットを無効化するなどしてトークンを減らす工夫も必要と思います。
 
+
 ---
+---
+
 
 ## 🚀 インストール
 
@@ -166,7 +169,7 @@ chmod +x scripts/macos/get-system-info.sh
 
 
 ---
-
+---
 
 
 ## 🦞 OpenClaw への設定
@@ -250,6 +253,9 @@ openclaw mcp set pc-system-info '{
 ```
 
 
+---
+---
+
 
 ## Hermes Agent を WSL (Windows Subsystem for Linux) で動作させている場合の設定
 `.hermes/config.yaml` を直接編集。
@@ -283,8 +289,10 @@ model:
 ```
 
 
+---
 
 ---
+
 
 > ** ⚠️ WSLの注意事項**:  
 > - `powershell.exe` がWSLのPATHに含まれている必要があります  
