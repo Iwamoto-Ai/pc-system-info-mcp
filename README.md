@@ -81,6 +81,27 @@ Hermes Agent  v0.14.0 (2026.5.16) 以降
 
 ---
 
+### 推奨モデル
+
+| モデル | ツール呼び出し | 日本語 | 必要VRAM容量 | 備考 |
+|--------|--------------|--------|------|------|
+| **nemotron-nano** | ◎ 安定 | ◎  | 12GB以上 | **推奨** |
+| **mistral-nemo** | ◎ 安定 | ◎  | 12GB以上 | **推奨** |
+| llama-3.3-70b-versatile | ◎ 安定 | ◎  | 48GB以上 | **推奨** |
+| google/gemma-3-27b-it | ◎ 安定 | ◎  | 35GB以上 | **推奨** |
+| qwen3:8b | ✗ 不安定 | △ | 8GB以上 | ツール呼び出しに失敗する |
+| qwen3:1.7b | ✗ 非対応 | △ | 6GB以上 | MCPツール呼び出し不可 |
+
+🦞 OpenClaw でMCPツール呼び出しを安定して使うには **nemotron-nano か mistral-nemo** が良いです。
+2026年5月時点では「nvidia-nemotron-nano-9b-v2-japanese」を一番推奨。　
+
+> **⚠️ Hermes Agent の注意点**:
+> LLMモデルの選定は必ず MCPツール使用の性能が高いものを使う必要があります。（例、llama-3.3-70b-versatile）
+> コンテキスト長の調整が必要な場合が多いです。（例、context_length: 65536　の行を追加）
+> 大量なトークンを必要とします。　不要なツールセットを無効化するなどしてトークンを減らす工夫も必要と思います。
+
+---
+
 ## 🚀 インストール
 
 ```bash
@@ -152,27 +173,6 @@ chmod +x scripts/macos/get-system-info.sh
 
 > **⚠️ 重要**: OpenClaw では Claude Desktop の `mcpServers` キーは使用できません。  
 > OpenClaw 専用の設定方法を使ってください。
-
-### 推奨モデル
-
-| モデル | ツール呼び出し | 日本語 | 必要VRAM容量 | 備考 |
-|--------|--------------|--------|------|------|
-| **nemotron-nano** | ◎ 安定 | ◎  | 12GB以上 | **推奨** |
-| **mistral-nemo** | ◎ 安定 | ◎  | 12GB以上 | **推奨** |
-| llama-3.3-70b-versatile | ◎ 安定 | ◎  | 48GB以上 | **推奨** |
-| google/gemma-3-27b-it | ◎ 安定 | ◎  | 35GB以上 | **推奨** |
-| qwen3:8b | ✗ 不安定 | △ | 8GB以上 | ツール呼び出しに失敗する |
-| qwen3:1.7b | ✗ 非対応 | △ | 6GB以上 | MCPツール呼び出し不可 |
-
-🦞 OpenClaw でMCPツール呼び出しを安定して使うには **nemotron-nano か mistral-nemo** が良いです。
-2026年5月時点では「nvidia-nemotron-nano-9b-v2-japanese」を一番推奨。　
-
-> **⚠️ Hermes Agent の注意点**:
-> LLMモデルの選定は必ず MCPツール使用の性能が高いものを使う必要があります。（例、llama-3.3-70b-versatile）
-> コンテキスト長の調整が必要な場合が多いです。（例、context_length: 65536　の行を追加）
-> 大量なトークンを必要とします。　不要なツールセットを無効化するなどしてトークンを減らす工夫も必要と思います。
-
-
 
 ```bash
 # nemotron-nano のインストール（Windows PowerShell）
