@@ -260,7 +260,7 @@ openclaw mcp set pc-system-info '{
 ## Hermes Agent を WSL (Windows Subsystem for Linux) で動作させている場合の設定
 `.hermes/config.yaml` を直接編集。
 
-```markdown
+```yaml
 mcp_servers:
  pc-system-info:
     command: node
@@ -277,7 +277,7 @@ mcp_servers:
 設定例、
 （OpenRouterの自動ルーティングオプションを使った例）
 `.hermes/config.yaml` を直接編集。
-```markdown
+```yaml
 model:
   api_key: API-KEYを記入
   base_url: https://openrouter.ai/api/v1
