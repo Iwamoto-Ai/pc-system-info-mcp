@@ -322,40 +322,39 @@ Do NOT answer from memory. Always call the tool first.
 ## 🌡️ 温度・ファン情報の取得（追加設定）
 
 ### Windows: CPU温度・ファン回転数
-
 標準のWMIでは詳細なセンサー情報を取得できないため、以下のいずれかが必要です:
 
-#### LibreHardwareMonitor（無料・⚠️脆弱性があるので非推奨）
+#### LibreHardwareMonitor（無料・⚠️WinRing0脆弱性があるので非推奨）
 1. [LibreHardwareMonitor](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor) をダウンロード
 2. **管理者権限**で実行
 3. メニュー: `Options → WMI Provider → Enable` にチェックを入れる
 4. バックグラウンドで常駐させる
 
-#### OpenHardwareMonitor（無料・⚠️脆弱性があるので非推奨）
+#### OpenHardwareMonitor（無料・⚠️WinRing0脆弱性があるので非推奨）
 1. [OpenHardwareMonitor](https://openhardwaremonitor.org/) をダウンロード
 2. 管理者権限で実行してバックグラウンド常駐
 
 > どちらも実行中でない場合、CPU温度・ファン情報は `null` になります。  
 > NVIDIA GPU温度は nvidia-smi 経由のため、上記ソフト不要です。
 
-#### ⚠️ Intel Core Ultra（Meteor Lake / Arrow Lake）世代の注意
 
-Intel Core Ultra 125U / 165U / 185H などの第14世代以降のCPUは、2025年時点で  
+#### ⚠️ Intel Core Ultra（Meteor Lake / Arrow Lake）世代の注意
+Intel Core Ultra 125U / 165U / 185H などの第14世代以降のCPUは、2026年5月時点で、  
 LibreHardwareMonitor・OpenHardwareMonitor ともに **CPU Package温度を取得できません**。
 
 代替として、同一ダイ上にある **内蔵GPU（Intel Arc Graphics）の温度を近似値**として取得します。  
 その場合 `tempSource` に `"iGPU temp used as approximation (Intel Core Ultra)"` と明示されます。
 
+
 | CPU世代 | CPU温度 | iGPU温度 | 取得方法 |
 |---------|---------|---------|---------|
 | Intel Core 12/13世代 | ✅ 取得可能 | - | LibreHardwareMonitor WMI |
-| **Intel Core Ultra (Meteor Lake)** | ❌ 取得不可 | ❌ 取得不可 | OHM/LHM ともに未対応（2025年時点） |
+| **Intel Core Ultra (Meteor Lake)** | ❌ 取得不可 | ❌ 取得不可 | WMI非対応・サードパーティツール不使用のため（2026年5月時点） |
 | AMD Ryzen | ✅ 取得可能 | - | LibreHardwareMonitor WMI |
 
-> **Intel Core Ultra 125U / 165U / 185H などのMeteor Lake世代**では、  
-> OpenHardwareMonitor・LibreHardwareMonitor ともにCPU温度・iGPU温度を取得できません。  
 > `temperatureC: null` + `tempNote` に理由が明示されます。  
 > NVIDIA外付けGPUの温度は nvidia-smi 経由で正常取得できます。
+
 
 ### macOS: CPU温度
 
