@@ -325,13 +325,13 @@ Do NOT answer from memory. Always call the tool first.
 
 標準のWMIでは詳細なセンサー情報を取得できないため、以下のいずれかが必要です:
 
-#### LibreHardwareMonitor（推奨・無料）
+#### LibreHardwareMonitor（無料・⚠️脆弱性があるので非推奨）
 1. [LibreHardwareMonitor](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor) をダウンロード
 2. **管理者権限**で実行
 3. メニュー: `Options → WMI Provider → Enable` にチェックを入れる
 4. バックグラウンドで常駐させる
 
-#### OpenHardwareMonitor（代替・無料）
+#### OpenHardwareMonitor（無料・⚠️脆弱性があるので非推奨）
 1. [OpenHardwareMonitor](https://openhardwaremonitor.org/) をダウンロード
 2. 管理者権限で実行してバックグラウンド常駐
 
