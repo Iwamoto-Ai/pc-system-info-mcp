@@ -431,6 +431,7 @@ pc-system-info-mcp/
 │   └── index.ts              # MCPサーバー本体
 ├── scripts/
 │   ├── windows/
+│   │   ├── diagnose-lhm.ps1  # LibreHardwareMonitor WMI接続の診断スクリプト
 │   │   └── get-system-info.ps1  # Windows PowerShell スクリプト
 │   └── macos/
 │       └── get-system-info.sh   # macOS Bash スクリプト
