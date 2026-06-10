@@ -89,6 +89,7 @@ Hermes Agent  v0.14.0 (2026.5.16) 以降
 | **mistral-nemo** | ◎ 安定 | ◎  | 12GB以上 | **推奨** |
 | llama-3.3-70b-versatile | 〇 安定 | ◎  | 48GB以上 |    |
 | google/gemma-3-27b-it | 〇 安定 | ◎  | 35GB以上 |    |
+| qwen3:14b | 〇 安定 | △ | 12GB以上 |    |
 | qwen3:8b | ✗ 不安定 | △ | 8GB以上 | ツール呼び出しに失敗する |
 | qwen3:1.7b | ✗ 非対応 | △ | 6GB以上 | MCPツール呼び出し不可 |
 
@@ -96,8 +97,10 @@ Hermes Agent  v0.14.0 (2026.5.16) 以降
 2026年5月時点では「nvidia-nemotron-nano-9b-v2-japanese」を一番推奨。　
 
 > **⚠️ Hermes Agent の注意点**:
-> LLMモデルの選定は必ず MCPツール使用の性能が高いものを使う必要があります。（例、llama-3.3-70b-versatile）
-> コンテキスト長の調整が必要な場合が多いです。（例、context_length: 65536　の行を追加）
+> LLMモデルの選定は必ず MCPツール使用の性能が高いものを使う必要があります。（例、llama-3.3-70b-versatile、qwen3:14b）
+> display.language を ja に変更。
+> tool_use_enforcement: strict に変更しないとツール呼べないみたいです。
+> コンテキスト長の調整が必要な場合が多いです。（例、context_length: 65536　と　ollama_num_ctx: 65536　の行を追加。）
 > 大量なトークンを必要とします。　不要なツールセットを無効化するなどしてトークンを減らす工夫も必要と思います。
 
 
