@@ -1,118 +1,80 @@
 # PC System Info MCP Server
+
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://www.apache.org/licenses/LICENSE-2.0)
 [![Node.js](https://img.shields.io/badge/Node.js-18%2B-green.svg)](https://nodejs.org/)
-[![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS-blue.svg)](#)
+[![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20WSL2-blue.svg)](https://github.com/Iwamoto-Ai/pc-system-info-mcp)
 [![MCP](https://img.shields.io/badge/MCP-Compatible-purple.svg)](https://modelcontextprotocol.io/)
 
-PCのシステム情報を取得する **Model Context Protocol (MCP) サーバー**です。  
-CPU/GPU稼働状況、RAM/VRAM、ファン回転数、ディスク、ネットワーク情報を Claude Desktop 、🦞OpenClaw 、Hermes Agent から自然言語で確認できます。
+PCのシステム情報を取得する **Model Context Protocol (MCP) サーバー**です。
+CPU/GPU稼働状況、RAM/VRAM、ディスク、ネットワーク情報を Claude Desktop、🦞OpenClaw、Hermes Agent から自然言語で確認できます。
 
-🦞 設定すれば、外出先からLineやDiscodeで 自宅のOpenClawが稼働しているPCの状況確認に使えます。
+プロンプト例: 「CPUとGPUの状況を教えて」など
 
-プロンプト例　「CPUとGPUの状況を教えて」など
+🦞 OpenClaw と組み合わせれば、外出先から LINE や Discord で自宅PCの状況確認にも使えます。
+**※リモート利用時は後述の [プライバシーモード](#-セキュリティプライバシー) の利用を推奨します。**
 
- 
-
-> **⚠️ 注意**: Windows WMICコマンドは廃止されたようなので使用していません。 `Get-CimInstance`（PowerShell）を使用します。
+> **⚠️ 設計方針**
+> - Windows の WMIC コマンドは廃止されたため使用せず、`Get-CimInstance`(PowerShell)を使用します。
+> - LibreHardwareMonitor / OpenHardwareMonitor は **使用しません**(依存ドライバー WinRing0.sys に既知の脆弱性 CVE-2020-14979 があるため)。このため Windows での CPU温度・ファンRPM の取得には制約があります(下記の対応表を参照)。
 
 ---
-
 
 ## 📊 取得できる情報
 
 | カテゴリ | 取得情報 | Windows | macOS |
-|---------|---------|---------|-------|
+| --- | --- | --- | --- |
 | **システム概要** | OS・ホスト名・稼働時間・マザーボード・BIOS | ✅ | ✅ |
-| **CPU** | 名称・コア数・クロック速度・負荷%・**温度°C** | ✅ | ✅ |
-| **GPU (NVIDIA)** | 名称・**温度°C**・使用率%・**VRAM使用量**・**ファン速度%**・消費電力W・クロック | ✅ | ✅ |
-| **GPU (AMD/Intel)** | 名称・VRAM総量・ドライババージョン | ✅ | ✅ |
+| **CPU** | 名称・コア数・クロック速度・負荷% | ✅ | ✅ |
+| **CPU温度** | 温度°C | ⚠️ 一部環境のみ¹ | ⚠️ 要追加設定² |
+| **GPU (NVIDIA)** | 名称・温度°C・使用率%・VRAM使用量・ファン速度%・消費電力W・クロック | ✅³ | ✅³ |
+| **GPU (AMD/Intel/Apple)** | 名称・VRAM総量・ドライババージョン | ✅ | ✅ |
 | **RAM** | 総容量・使用量・空き容量・使用率%・スロット情報 | ✅ | ✅ |
-| **ファン** | 全ファンの回転数 (RPM) | ✅* | ✅* |
-| **ディスク** | モデル・容量・メディア種別・インターフェース・ボリューム使用量・読み書き速度 | ✅ | ✅ |
+| **ファン回転数** | RPM | ❌ 取得不可⁴ | ⚠️ sudo必要⁵ |
+| **ディスク** | モデル・容量・インターフェース・ボリューム使用量・読み書き速度 | ✅ | ✅ |
 | **ネットワーク** | アダプター情報・IPアドレス・MAC・DNS・送受信スループット | ✅ | ✅ |
 
-> *ファン・CPU温度: 追加ソフトウェアが必要（後述）
+> ¹ `MSAcpi_ThermalZoneTemperature`(標準WMI)で取得します。対応はハードウェア依存で、Intel Core Ultra(Meteor Lake / Arrow Lake)世代を含む多くのPCでは取得できません。取得できない場合は `temperatureC: null` と理由を示す `tempNote` が返ります。
+> ² Intel Mac: `brew install osx-cpu-temp`。Apple Silicon: `powermetrics`(sudo必要)。
+> ³ `nvidia-smi`(NVIDIAドライバー付属)経由。追加ソフト不要です。
+> ⁴ 標準WMIではコンシューマー向けマザーボードのファンRPMは公開されておらず、サードパーティのセンサーツールは上記の方針により使用しないため、現状取得できません。レスポンスには理由を示す `note` が含まれます。
+> ⁵ `powermetrics` 経由(sudo必要)。
 
 ---
-
 
 ## 🛠️ 利用可能なMCPツール
 
 | ツール名 | 説明 |
-|---------|------|
+| --- | --- |
 | `get_system_overview` | システム全体の概要 |
-| `get_cpu_info` | CPU情報（温度・負荷含む） |
-| `get_gpu_info` | GPU情報（NVIDIA完全テレメトリ） |
+| `get_cpu_info` | CPU情報(負荷、温度は取得可能な環境のみ) |
+| `get_gpu_info` | GPU情報(NVIDIAは完全テレメトリ) |
 | `get_ram_info` | RAM使用状況・DIMMスロット |
-| `get_fan_info` | ファン回転数 (RPM) |
+| `get_fan_info` | ファン情報(取得可否と理由を含む) |
 | `get_disk_info` | ストレージ情報・I/Oスループット |
 | `get_network_info` | ネットワーク情報・スループット |
 | `get_all_system_info` | **全情報を一括取得** |
-| `get_server_info` | MCPサーバー自体の情報・設定ヒント |
+| `get_server_info` | MCPサーバー自体の情報・設定状態 |
+
+> ローカルLLMがツール名を間違えやすいことへの対策として、`cpu_info` や `get_memory` などの**別名(エイリアス)も受け付けます**。エイリアスはツール一覧には現れず、ローカルLLM救済専用です。
 
 ---
-
 
 ## 📋 必要条件
 
-### 共通
-- **Node.js 18.0.0 以上**
-- Git
+- **Node.js 18.0.0 以上**、Git
+- **Windows**: Windows 10 21H1 以降(Windows 11 推奨)、PowerShell 5.1以上(標準付属)
+- **macOS**: macOS 12 Monterey 以降
+- **WSL2**: Windows側の情報を取得します(`powershell.exe` がWSLのPATHに必要)
 
-### Windows
-- Windows 10 バージョン 21H1 以降（WMICが削除されたバージョン対応）
-- Windows 11 推奨
-- PowerShell 5.1以上（Windows標準付属）
-
-### macOS
-- macOS 12 Monterey 以降
-
-### OpenClaw
-- 🦞 OpenClaw Version 2026.5.12 以降
-
-### Hermes Agent
-Hermes Agent  v0.14.0 (2026.5.16) 以降
-　※ Windowsの場合は WSL (Windows Subsystem for Linux) で動作させている想定。
-
-> **⚠️ Hermes Agent の注意点**:
-> LLMモデルの選定は必ずツール使用の性能が高いものを使う必要があります。※重要　
-> コンテキスト長の調整が必要な場合が多いです。
-> 大量なトークンを必要とします。　不要なツールセットを無効化するなどしてトークンを減らす工夫も必要と思います。
+OpenClaw / Hermes Agent と組み合わせる場合の要件・推奨モデル・設定は、それぞれ [docs/openclaw.md](docs/openclaw.md) / [docs/hermes.md](docs/hermes.md) を参照してください。
 
 ---
-
-### 推奨モデル
-
-| モデル | ツール呼び出し | 日本語 | 必要VRAM容量 | 備考 |
-|--------|--------------|--------|------|------|
-| **nemotron-nano** | ◎ 安定 | ◎  | 12GB以上 | **推奨** |
-| **mistral-nemo** | ◎ 安定 | ◎  | 12GB以上 | **推奨** |
-| llama-3.3-70b-versatile | 〇 安定 | ◎  | 48GB以上 |    |
-| google/gemma-3-27b-it | 〇 安定 | ◎  | 35GB以上 |    |
-| qwen3:14b | 〇 安定 | △ | 12GB以上 |    |
-| qwen3:8b | ✗ 不安定 | △ | 8GB以上 | ツール呼び出しに失敗する |
-| qwen3:1.7b | ✗ 非対応 | △ | 6GB以上 | MCPツール呼び出し不可 |
-
-🦞 OpenClaw でMCPツール呼び出しを安定して使うには **nemotron-nano か mistral-nemo** が良いです。
-2026年5月時点では「nvidia-nemotron-nano-9b-v2-japanese」を一番推奨。　
-
-> **⚠️ Hermes Agent の注意点**:
-> LLMモデルの選定は必ず MCPツール使用の性能が高いものを使う必要があります。（例、llama-3.3-70b-versatile、qwen3:14b）
-> display.language を ja に変更。
-> tool_use_enforcement: strict に変更しないとツール呼べないみたいです。
-> コンテキスト長の調整が必要な場合が多いです。（例、context_length: 65536　と　ollama_num_ctx: 65536　の行を追加。）
-> 大量なトークンを必要とします。　不要なツールセットを無効化するなどしてトークンを減らす工夫も必要と思います。
-
-
----
----
-
 
 ## 🚀 インストール
 
 ```bash
 # 1. リポジトリのクローン
-git clone https://github.com/YourName/pc-system-info-mcp.git
+git clone https://github.com/Iwamoto-Ai/pc-system-info-mcp.git
 cd pc-system-info-mcp
 
 # 2. 依存パッケージのインストール
@@ -120,49 +82,43 @@ npm install
 
 # 3. ビルド
 npm run build
-
-# macOSの場合: スクリプトに実行権限を付与
-chmod +x scripts/macos/get-system-info.sh
 ```
+
+> macOSスクリプトは `bash` 経由で実行されるため、`chmod +x` は不要です。
+> PowerShellスクリプトは `-ExecutionPolicy Bypass` 付きで起動されるため、通常は実行ポリシーの変更も不要です。
 
 ---
 
 ## ⚙️ Claude Desktop への設定
 
-### 設定ファイルの場所
+設定ファイルの場所:
 
 | OS | パス |
-|----|------|
+| --- | --- |
 | Windows | `%APPDATA%\Claude\claude_desktop_config.json` |
 | macOS | `~/Library/Application Support/Claude/claude_desktop_config.json` |
 
-
-### Windows の設定例
+Windows の設定例:
 
 ```json
 {
   "mcpServers": {
     "pc-system-info": {
       "command": "node",
-      "args": [
-        "C:\\Users\\YourName\\pc-system-info-mcp\\dist\\index.js"
-      ]
+      "args": ["C:\\Users\\YourName\\pc-system-info-mcp\\dist\\index.js"]
     }
   }
 }
 ```
 
-
-### macOS の設定例
+macOS の設定例:
 
 ```json
 {
   "mcpServers": {
     "pc-system-info": {
       "command": "node",
-      "args": [
-        "/Users/YourName/pc-system-info-mcp/dist/index.js"
-      ]
+      "args": ["/Users/YourName/pc-system-info-mcp/dist/index.js"]
     }
   }
 }
@@ -170,239 +126,74 @@ chmod +x scripts/macos/get-system-info.sh
 
 設定後、**Claude Desktop を再起動**してください。
 
+OpenClaw への設定(`mcpServers` キーは使えません)は [docs/openclaw.md](docs/openclaw.md)、Hermes Agent(WSL)への設定は [docs/hermes.md](docs/hermes.md) を参照してください。
 
 ---
----
 
+## 🔧 環境変数によるオプション
 
-## 🦞 OpenClaw への設定
+| 環境変数 | 既定値 | 説明 |
+| --- | --- | --- |
+| `PRIVACY_MODE` | `0` | `1` でシリアル番号・MACアドレス・IPアドレス・DNS・ゲートウェイを `[REDACTED]` にマスク |
+| `MCP_LENIENT_MODE` | `0` | `1` で未知のツール名を `get_all_system_info` にフォールバック(ローカルLLM向け)。既定ではMCP仕様どおりエラーを返します |
+| `CACHE_TTL_MS` | `3000` | 結果キャッシュの有効期間(ミリ秒)。同一カテゴリの連続呼び出しでスクリプトを多重起動しません |
 
-> **⚠️ 重要**: OpenClaw では Claude Desktop の `mcpServers` キーは使用できません。  
-> OpenClaw 専用の設定方法を使ってください。
-
-```bash
-# nemotron-nano のインストール（Windows PowerShell）
-ollama pull fuukeidaisuki/nvidia-nemotron-nano-9b-v2-japanese  # 約6.5GB
-```
-
-### ステップ1: CLIコマンドで登録（推奨）
-
-`openclaw.json` を直接編集せず、CLIで登録するのが確実です:
-
-```bash
-# Linux / WSL
-openclaw mcp set pc-system-info '{
-  "command": "node",
-  "args": ["/home/YourName/pc-system-info-mcp/dist/index.js"]
-}'
-
-# 登録確認
-openclaw mcp list
-openclaw mcp show pc-system-info
-```
-
-### ステップ2: モデルを登録・設定
-
-```bash
-# nemotron-nanoをOpenClawに登録
-openclaw config set models.providers.ollama.models   '[{"id":"nemotron-nano","name":"nemotron nano 9b v2","input":["text"],"contextWindow":128000,"maxTokens":4096}]'
-
-# デフォルトモデルに設定
-openclaw config set agents.defaults.model '{"primary":"ollama/nemotron-nano"}'
-
-# 思考モードをオフ（誤動作防止）
-openclaw config set agents.defaults.thinkingDefault '"off"'
-```
-
-### ステップ3: ゲートウェイ再起動・確認
-
-```bash
-openclaw gateway restart
-openclaw status | grep -i "model\|session"
-```
-
-`nemotron-nano` が表示されれば成功です。
-
-### 🦞 openclaw.json に直接記述する場合
-
-`~/.openclaw/openclaw.json` に追記する場合は **`mcp.servers`** キーを使います（`mcpServers` は無効）:
+設定例(Claude Desktop):
 
 ```json
 {
-  "mcp": {
-    "servers": {
-      "pc-system-info": {
-        "command": "node",
-        "args": [
-          "/home/YourName/pc-system-info-mcp/dist/index.js"
-        ]
-      }
+  "mcpServers": {
+    "pc-system-info": {
+      "command": "node",
+      "args": ["/Users/YourName/pc-system-info-mcp/dist/index.js"],
+      "env": { "PRIVACY_MODE": "1" }
     }
   }
 }
 ```
 
-🦞 OpenClaw を WSL (Windows Subsystem for Linux) で使用する場合
+---
 
-WSL内で動かす場合、MCPサーバーは自動的にWSLを検出してWindows側の `powershell.exe` を呼び出します。  
-`wslpath` コマンドが利用可能であることを確認してください。
+## 🌡️ 温度の取得について
+
+### Windows
+
+標準WMI(`MSAcpi_ThermalZoneTemperature`)のみを使用します。対応ハードウェアは限られており、取得できない場合は `temperatureC: null` と `tempNote` が返ります。
+
+Intel Core Ultra(Meteor Lake / Arrow Lake)世代は標準WMIで温度を公開しないため取得できません。NVIDIA外付けGPUの温度は `nvidia-smi` 経由で正常に取得できます。
+
+> LibreHardwareMonitor / OpenHardwareMonitor を使えばCPU温度・ファンRPMを取得できますが、依存ドライバー WinRing0.sys の脆弱性(CVE-2020-14979)のため本プロジェクトでは対応していません。
+
+### macOS
 
 ```bash
-# WSLでの登録例
-openclaw mcp set pc-system-info '{
-  "command": "node",
-  "args": ["/home/YourName/pc-system-info-mcp/dist/index.js"]
-}'
-```
-
-
----
----
-
-
-## Hermes Agent を WSL (Windows Subsystem for Linux) で動作させている場合の設定
-`.hermes/config.yaml` を直接編集。
-
-```yaml
-mcp_servers:
- pc-system-info:
-    command: node
-    args:
-    - /home/YourName/pc-system-info-mcp/dist/index.js
-    sessionIdleTtlMs: 600000
-```
-
-> **⚠️ Hermes Agent の注意点**:
-> LLMモデルの選定は必ず MCPツール使用の性能が高いものを使う必要があります。（例、llama-3.3-70b-versatile）
-> コンテキスト長の調整が必要な場合が多いです。（例、context_length: 65536　の行を追加）
-> 大量なトークンを必要とします。　不要なツールセットを無効化するなどしてトークンを減らす工夫も必要と思います。
-
-設定例、
-（OpenRouterの自動ルーティングオプションを使った例）
-`.hermes/config.yaml` を直接編集。
-```yaml
-model:
-  api_key: API-KEYを記入
-  base_url: https://openrouter.ai/api/v1
-  context_length: 65536
-  default: openrouter/auto
-  provider: openrouter
-  tools: all
-  api_mode: chat_completions
-```
-
-
----
-
----
-
-
-> ** ⚠️ WSLの注意事項**:  
-> - `powershell.exe` がWSLのPATHに含まれている必要があります  
-> - パスが見つからない場合: `/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe` をフルパスで指定  
-> - Windows側のOllamaに接続するため、Ollamaは必ずWindows側で起動してください
-
-### AGENTS.md へのツール使用指示追加（推奨）
-
-ローカルLLMがMCPツールを確実に呼び出すよう、`~/.openclaw/workspace/AGENTS.md` に以下を追加することを推奨します:
-
-```markdown
-## PC System Info MCP Tools
-When user asks about CPU, GPU, RAM, temperature, fan, disk, or network,
-ALWAYS call the appropriate tool directly:
-- get_cpu_info: CPU load and temperature
-- get_gpu_info: GPU temperature and VRAM  
-- get_ram_info: RAM usage
-- get_fan_info: Fan speeds RPM
-- get_disk_info: Disk usage and throughput
-- get_network_info: Network adapters
-- get_all_system_info: ALL metrics at once (recommended)
-Do NOT answer from memory. Always call the tool first.
-```
-
----
-
-## 🌡️ 温度・ファン情報の取得（追加設定）
-
-### Windows: CPU温度・ファン回転数
-標準のWMIでは詳細なセンサー情報を取得できないため、以下のいずれかが必要です:
-
-#### LibreHardwareMonitor（無料・⚠️WinRing0脆弱性があるので非推奨）
-1. [LibreHardwareMonitor](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor) をダウンロード
-2. **管理者権限**で実行
-3. メニュー: `Options → WMI Provider → Enable` にチェックを入れる
-4. バックグラウンドで常駐させる
-
-#### OpenHardwareMonitor（無料・⚠️WinRing0脆弱性があるので非推奨）
-1. [OpenHardwareMonitor](https://openhardwaremonitor.org/) をダウンロード
-2. 管理者権限で実行してバックグラウンド常駐
-
-> どちらも実行中でない場合、CPU温度・ファン情報は `null` になります。  
-> NVIDIA GPU温度は nvidia-smi 経由のため、上記ソフト不要です。
-
-
-#### ⚠️ Intel Core Ultra（Meteor Lake / Arrow Lake）世代の注意
-Intel Core Ultra 125U / 165U / 185H などの第14世代以降のCPUは、2026年5月時点で、  
-LibreHardwareMonitor・OpenHardwareMonitor ともに **CPU Package温度を取得できません**。
-
-代替として、同一ダイ上にある **内蔵GPU（Intel Arc Graphics）の温度を近似値**として取得します。  
-その場合 `tempSource` に `"iGPU temp used as approximation (Intel Core Ultra)"` と明示されます。
-
-
-| CPU世代 | CPU温度 | iGPU温度 | 取得方法 |
-|---------|---------|---------|---------|
-| Intel Core 12/13世代 | ✅ 取得可能 | - | LibreHardwareMonitor WMI |
-| **Intel Core Ultra (Meteor Lake)** | ❌ 取得不可 | ❌ 取得不可 | WMI非対応・サードパーティツール不使用のため（2026年5月時点） |
-| AMD Ryzen | ✅ 取得可能 | - | LibreHardwareMonitor WMI |
-
-
-> `temperatureC: null` + `tempNote` に理由が明示されます。  
-
-> ✅NVIDIA外付けGPUの温度は nvidia-smi 経由で正常取得できます。
-
-
-
-### macOS: CPU温度
-
-```bash
-# Homebrewでインストール（Intel Mac）
+# Intel Mac
 brew install osx-cpu-temp
-
-# 動作確認
-osx-cpu-temp
 ```
 
-**Apple Silicon (M1/M2/M3/M4) の場合:**  
-`powermetrics` コマンドが使用されます（sudo権限が必要）。  
-sudo なしの場合は温度が取得できませんが、他の情報は取得可能です。
+Apple Silicon (M1/M2/M3/M4) では `powermetrics`(sudo必要)が使用されます。sudoなしでは温度は取得できませんが、他の情報は取得可能です。
 
-### NVIDIA GPU（Windows / macOS 共通）
+### NVIDIA GPU(Windows / macOS / WSL 共通)
 
-`nvidia-smi` がシステムPATHに存在する場合、自動的に使用されます。  
-NVIDIAドライバーをインストールすると通常は自動的に追加されます。
+`nvidia-smi` がPATHにあれば自動的に使用されます(NVIDIAドライバーに付属)。
 
-確認コマンド:
-```bash
-# Windows PowerShell
-nvidia-smi
-
-# macOS / WSL
+```powershell
+# 動作確認
 nvidia-smi
 ```
 
 ---
 
-## 💡 使用例（Claudeとの会話）
+## 💡 使用例(Claudeとの会話)
 
 ```
 ユーザー: PCの現在の温度を教えて
 
 Claude: [get_all_system_info を実行]
-        CPU温度: 65°C（負荷: 23%）
-        GPU(RTX 4090)温度: 72°C（使用率: 45%、VRAM: 8GB/24GB使用中）
-        ファン: CPUファン 1200RPM、ケースファン 800RPM
+        CPU温度: 65°C(負荷: 23%)
+        GPU(RTX 4090)温度: 72°C(使用率: 45%、VRAM: 8GB/24GB使用中)
 
-ユーザー: RAMの使用状況は？
+ユーザー: RAMの使用状況は?
 
 Claude: [get_ram_info を実行]
         合計: 32GB DDR5
@@ -411,144 +202,69 @@ Claude: [get_ram_info を実行]
         スロット: 2枚 × 16GB (6000MHz, G.Skill)
 ```
 
-
 ---
 
 ## 🔧 開発・カスタマイズ
 
-### 開発モード（ビルド不要）
-
 ```bash
-npm run dev
+npm run dev     # 開発モード(ビルド不要)
+npm run build   # ビルド
 ```
 
-### ビルド
-
-```bash
-npm run build
-```
-
-
-### プロジェクト構成
+プロジェクト構成:
 
 ```
 pc-system-info-mcp/
 ├── src/
-│   └── index.ts              # MCPサーバー本体
+│   └── index.ts                    # MCPサーバー本体
 ├── scripts/
 │   ├── windows/
-│   │   ├── diagnose-lhm.ps1  # LibreHardwareMonitor WMI接続の診断スクリプト
-│   │   └── get-system-info.ps1  # Windows PowerShell スクリプト
+│   │   ├── get-system-info.ps1     # Windows PowerShell スクリプト
+│   │   └── diagnose-lhm.ps1        # (参考) センサーWMI診断スクリプト
 │   └── macos/
-│       └── get-system-info.sh   # macOS Bash スクリプト
+│       └── get-system-info.sh      # macOS Bash スクリプト
 ├── docs/
+│   ├── openclaw.md                 # OpenClaw 設定ガイド
+│   ├── hermes.md                   # Hermes Agent 設定ガイド
 │   ├── claude-desktop-windows.json
 │   ├── claude-desktop-macos.json
 │   └── openclaw-config.json
-├── dist/                     # ビルド成果物（gitignore）
+├── .github/workflows/ci.yml        # CI(ビルド+スクリプト出力のJSON検証)
+├── dist/                           # ビルド成果物(gitignore)
 ├── package.json
 ├── tsconfig.json
 └── README.md
 ```
 
-
 ---
 
-## 🔒 セキュリティ・権限
+## 🔒 セキュリティ・プライバシー
 
-### Windows PowerShell 実行ポリシー
+**返却データに含まれる識別情報**: ホスト名、内部IPアドレス、MACアドレス、DNS/ゲートウェイ、ディスクおよび本体のシリアル番号が含まれます。LINE・Discord等の外部メッセンジャー経由でリモート利用する場合は、`PRIVACY_MODE=1` でこれらをマスクすることを強く推奨します。
 
-初回実行時にエラーが出る場合、PowerShellをAdministratorで開いて実行:
+**サードパーティドライバー不使用**: WinRing0.sys 脆弱性(CVE-2020-14979)を避けるため、カーネルドライバーに依存するセンサーツールは使用しません。すべて標準API(CIM/WMI、nvidia-smi、sysctl等)で取得します。
 
-```powershell
-Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
-```
-
-### macOS 権限
-
-sudo なしでは一部センサー情報（AppleSilicon温度等）が取得できません。  
-管理者権限不要な情報は通常権限で取得されます。
-
-### WMIアクセス権（Windows）
-
-LibreHardwareMonitor のWMIプロバイダーへのアクセスに管理者権限が必要な場合があります。
+**PowerShell実行ポリシー**: サーバーは `-ExecutionPolicy Bypass -NoProfile -NonInteractive` でスクリプト単体を起動します。システムの実行ポリシー変更は不要です。
 
 ---
 
 ## ❓ トラブルシューティング
 
-### nvidia-smi が見つからない（GPU温度なし）
+### nvidia-smi が見つからない(GPU温度なし)
 
 ```powershell
-# Windows: NVIDIAドライバーの再インストール後　　※最新版を推奨
+# Windows: NVIDIAドライバー(最新版推奨)の再インストール後
 where nvidia-smi
-
-# PATHに追加する場合
-$env:PATH += ";C:\Program Files\NVIDIA Corporation\NVSMI"
 ```
 
-### Windows WLS環境で "nvidia-smi" の情報にアクセスできていないエラー
+### WSL環境で nvidia-smi の情報にアクセスできない
 
-- GPUのドライバーが古くないか？　ドライバーを最新バージョンにしてみる。PC再起動必要。
-
-- WSL2のGPUパススルーが機能しているか？
-
-- WSL2側の環境変数は設定されているか？
-
-
-```bash
-# WSL2でnvidia-smiが実行できるか確認。
-nvidia-smi
-```
-
-```bash
-# WSL2側の環境変数をシェルの設定ファイルに追加 (~/.bashrc または ~/.zshrc)。（注意：バージョン番号は適宜読み替えてください）
-# (例: CUDA 13.3)
-export PATH=/usr/local/cuda-13.3/bin${PATH:+:${PATH}}
-export LD_LIBRARY_PATH=/usr/local/cuda-13.3/lib64${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}
-```
-
-WSL2のUbuntuなどのディストリビューション内で、NVIDIAが提供するWSL2専用のCUDAリポジトリからツールキットをインストールしてみる。
-```bash
-# 1. リポジトリのGPGキーと設定を追加
-sudo apt-key del 7fa2af80 # 古いキーがある場合は削除
-wget https://developer.download.nvidia.com/compute/cuda/repos/wsl-ubuntu/x86_64/cuda-keyring_1.1-1_all.deb
-sudo dpkg -i cuda-keyring_1.1-1_all.deb
-
-# 2. パッケージリストを更新
-sudo apt update
-
-# 3. CUDAツールキットをインストール  （注意：バージョン番号は適宜読み替えてください）
-# (例: CUDA 13.3)
-sudo apt install -y cuda-toolkit-13-3
-
-# 4. 環境変数をシェルの設定ファイルに追加 (~/.bashrc または ~/.zshrc)  （注意：バージョン番号は適宜読み替えてください）
-# (例: CUDA 13.3)
-echo 'export PATH=/usr/local/cuda-13.3/bin${PATH:+:${PATH}}' >> ~/.bashrc
-echo 'export LD_LIBRARY_PATH=/usr/local/cuda-13.3/lib64${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}' >> ~/.bashrc
-source ~/.bashrc
-
-```
-
+GPUドライバーが古くないか確認し(最新化後はPC再起動)、WSL2のGPUパススルーが機能しているかを `nvidia-smi` の実行で確認してください。必要に応じてNVIDIAのWSL2専用CUDAリポジトリからツールキットをインストールし、`PATH` / `LD_LIBRARY_PATH` を設定します(詳細は[NVIDIAのWSLドキュメント](https://docs.nvidia.com/cuda/wsl-user-guide/index.html)参照)。
 
 ### "Script not found" エラー
 
 ```bash
-# ビルドを実行してdist/を生成する
-npm run build
-```
-
-### Windows: "execution policy" エラー
-
-```powershell
-# PowerShellを管理者で開いて実行
-Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
-```
-
-### macOS: "permission denied" エラー
-
-```bash
-chmod +x scripts/macos/get-system-info.sh
+npm run build   # dist/ を生成
 ```
 
 ### WSL: "powershell.exe not found" エラー
@@ -557,102 +273,31 @@ chmod +x scripts/macos/get-system-info.sh
 # フルパスを確認
 ls /mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe
 
-# 環境変数PATHにWindowsパスが含まれているか確認
+# PATHにWindowsパスが含まれているか確認
 echo $PATH | grep -i windows
 ```
 
-WSL2でWindowsのパスが含まれていない場合、`/etc/wsl.conf` に追加:
+含まれていない場合、`/etc/wsl.conf` に追加して WSL を再起動:
+
 ```ini
 [interop]
 appendWindowsPath = true
 ```
 
-### CPU/ファン温度が null になる（Windows）
+### CPU温度・ファンRPMが null になる(Windows)
 
-LibreHardwareMonitor または OpenHardwareMonitor を:
-1. **管理者権限**で起動
-2. WMI Provider を有効化
-3. バックグラウンドで常駐させた状態で再試行
+仕様です。上記「📊 取得できる情報」の注記を参照してください。レスポンスの `tempNote` / `note` に理由が示されます。
 
-
----
-
-## ❓ 🦞 OpenClaw トラブルシューティング
-
-### `Unrecognized key: "mcpServers"` エラー
-
-🦞 OpenClaw では Claude Desktop 形式の `mcpServers` キーは使用できません。  
-CLIコマンドで登録してください:
-
-```bash
-openclaw mcp set pc-system-info '{
-  "command": "node",
-  "args": ["/home/YourName/pc-system-info-mcp/dist/index.js"]
-}'
-openclaw gateway restart
-```
-
-### ツールを呼び出さず 엉뚱 のような返答をする
-
-ローカルLLMがMCPツールを無視して返答する場合:
-
-1. **モデルを nemotron-nano に切り替える**（最も効果的）
-```bash
-ollama pull fuukeidaisuki/nvidia-nemotron-nano-9b-v2-japanese
-openclaw config set agents.defaults.model '{"primary":"ollama/fuukeidaisuki/nvidia-nemotron-nano-9b-v2-japanese"}'
-openclaw gateway restart
-```
-
-2. **AGENTS.md にツール使用を明示する**
-```bash
-cat >> ~/.openclaw/workspace/AGENTS.md << 'AGEOF'
-
-## PC System Info MCP Tools
-When user asks about CPU, GPU, RAM, temperature, fan, disk, or network,
-ALWAYS call the appropriate MCP tool. Do NOT answer from memory.
-- get_cpu_info, get_gpu_info, get_ram_info, get_fan_info
-- get_disk_info, get_network_info, get_all_system_info
-AGEOF
-```
-
-3. **英語で明示的に指示して試してみる**
-```
-Use get_all_system_info tool and show the result.
-```
-
-### Tool output が返ってこない（タイムアウト）
-
-PowerShellの起動に数秒かかるため、OpenClawのMCPタイムアウトを延長:
-
-```bash
-openclaw config set mcp.sessionIdleTtlMs 300000
-openclaw gateway restart
-```
-
-### `model not allowed` エラー
-
-Ollamaのモデルを 🦞 OpenClaw に明示的に登録する必要があります:
-
-```bash
-openclaw config set models.providers.ollama.models   '[{"id":"nemotron-nano","name":"Nvidia nemotron nano 9b v2 japanese","input":["text"],"contextWindow":128000,"maxTokens":4096}]'
-```
-
-### セッションが古いモデルを使い続ける
-
-```bash
-# セッションをリセットしてモデルを反映
-openclaw gateway restart
-# ダッシュボードで /new と入力して新しいセッションを開始
-```
+OpenClaw固有のトラブルシューティングは [docs/openclaw.md](docs/openclaw.md) を参照してください。
 
 ---
 
 ## 📝 Windows技術詳細
 
-### 使用API（WMIC廃止後の代替）
+### 使用API(WMIC廃止後の代替)
 
-| 廃止（WMIC） | 代替（Get-CimInstance） |
-|-------------|------------------------|
+| 廃止(WMIC) | 代替(Get-CimInstance) |
+| --- | --- |
 | `wmic cpu get ...` | `Get-CimInstance Win32_Processor` |
 | `wmic memorychip get ...` | `Get-CimInstance Win32_PhysicalMemory` |
 | `wmic diskdrive get ...` | `Get-CimInstance Win32_DiskDrive` |
@@ -662,21 +307,21 @@ openclaw gateway restart
 ### センサー情報の取得元
 
 ```
-CPU温度・ファン回転数:
-  1. root/LibreHardwareMonitor (LibreHardwareMonitor)
-  2. root/OpenHardwareMonitor  (OpenHardwareMonitor)  
-  3. root/WMI MSAcpi_ThermalZoneTemperature (一部環境のみ)
+CPU温度:
+  root/WMI MSAcpi_ThermalZoneTemperature(一部環境のみ)
+
+ファン:
+  Win32_Fan(root/cimv2。RPMはほとんどの環境で非公開)
 
 GPU情報 (NVIDIA):
-  nvidia-smi コマンド（ドライバー付属）
+  nvidia-smi コマンド(ドライバー付属)
 
 GPU情報 (AMD/Intel):
   Get-CimInstance Win32_VideoController
 
 ディスクI/O・ネットワークスループット:
-  Get-Counter パフォーマンスカウンター
+  Get-Counter パフォーマンスカウンター(全インターフェース一括取得)
 ```
-
 
 ---
 
@@ -684,11 +329,9 @@ GPU情報 (AMD/Intel):
 
 Apache License Version 2.0 - 詳細は [LICENSE](LICENSE) を参照
 
-Copyright 2026　岩本 剛　All rights reserved.
-
+Copyright 2026 岩本 剛 All rights reserved.
 
 ---
-
 
 ## 🤝 コントリビュート
 
@@ -702,14 +345,11 @@ Issue・Pull Request 歓迎です。
 
 ---
 
-
 ## 📚 参考資料
 
-- [WMIC の Windows からの削除について (Microsoft)](https://support.microsoft.com/ja-jp/topic/windows-%E7%AE%A1%E7%90%86%E3%82%A4%E3%83%B3%E3%82%B9%E3%83%88%E3%83%AB%E3%83%A1%E3%83%B3%E3%83%86%E3%83%BC%E3%82%B7%E3%83%A7%E3%83%B3-%E3%82%B3%E3%83%9E%E3%83%B3%E3%83%89-%E3%83%A9%E3%82%A4%E3%83%B3-wmic-%E3%81%AE-windows-%E3%81%8B%E3%82%89%E3%81%AE%E5%89%8A%E9%99%A4-e9e83c7f-4992-477f-ba1d-96f694b8665d)
+- [WMIC の Windows からの削除について (Microsoft)](https://support.microsoft.com/ja-jp/topic/e9e83c7f-4992-477f-ba1d-96f694b8665d)
 - [Model Context Protocol (MCP) 公式](https://modelcontextprotocol.io/)
-- [OpenHardwareMonitor](https://openhardwaremonitor.org/)
-- [LibreHardwareMonitor](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor)
-- [HWiNFO](https://www.hwinfo.com/)
-- [Claude Desktop MCP Documentation](https://docs.anthropic.com/en/docs/claude-code/overview)
+- [WinRing0 脆弱性 CVE-2020-14979](https://nvd.nist.gov/vuln/detail/CVE-2020-14979)
+- [Claude Desktop での MCP 利用 (Anthropic)](https://support.claude.com/ja/articles/10065433)
 - [🦞OpenClaw](https://openclaw.ai/)
 - [Hermes-Agent](https://hermes-agent.nousresearch.com/docs/)
