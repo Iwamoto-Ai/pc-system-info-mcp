@@ -1,6 +1,6 @@
 {
   "name": "pc-system-info-mcp",
-  "version": "1.0.0",
+  "version": "1.2.0",
   "description": "MCP Server for monitoring PC system information (CPU/GPU temperature, RAM, VRAM, Fan, Disk, Network) on Windows and macOS",
   "main": "dist/index.js",
   "type": "module",
@@ -25,7 +25,7 @@
     "claude",
     "openclaw"
   ],
-  "author": "",
+  "author": "岩本 剛 (Iwamoto-Ai)",
   "license": "Apache-2.0",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0"
@@ -37,5 +37,15 @@
   },
   "engines": {
     "node": ">=18.0.0"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Iwamoto-Ai/pc-system-info-mcp.git"
+  },
+  "files": [
+    "dist",
+    "scripts",
+    "README.md",
+    "LICENSE"
+  ]
 }

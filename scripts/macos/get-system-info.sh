@@ -7,6 +7,21 @@ set -euo pipefail
 
 CATEGORY="${1:-all}"
 
+# --- JSON helpers ---------------------------------------------------------
+# Escape a value for safe embedding inside a JSON string literal.
+# Hostnames, model names, GPU names etc. may contain quotes/backslashes,
+# which would otherwise break the hand-built JSON.
+json_escape() {
+  printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' | tr -d '\000-\037'
+}
+
+# Print the value if it is a plain number, otherwise print "null".
+# Protects against non-numeric output (e.g. "[N/A]" from nvidia-smi) and
+# avoids set -e aborts on numeric tests.
+num_or_null() {
+  if [[ "${1:-}" =~ ^-?[0-9]+(\.[0-9]+)?$ ]]; then printf '%s' "$1"; else printf 'null'; fi
+}
+
 get_overview() {
   local hostname product os_ver build kern_ver uptime_s uptime_h boot_time tz
   hostname=$(scutil --get ComputerName 2>/dev/null || hostname)
@@ -24,6 +39,10 @@ get_overview() {
   local arch; arch=$(uname -m)
   local serial; serial=$(system_profiler SPHardwareDataType 2>/dev/null | awk -F': ' '/Serial Number/{print $2}' | xargs)
 
+  hostname=$(json_escape "$hostname")
+  product=$(json_escape "$product")
+  serial=$(json_escape "$serial")
+
   cat <<EOF
 "overview":{"hostname":"${hostname}","os":"macOS ${os_ver}","osVersion":"${os_ver}","buildNumber":"${build}","kernelVersion":"${kern_ver}","architecture":"${arch}","manufacturer":"${manufacturer}","model":"${product}","serialNumber":"${serial}","uptimeHours":${uptime_h},"lastBoot":"${boot_str}","timezone":"${tz}","timestamp":"$(date '+%Y-%m-%d %H:%M:%S')"}
 EOF
@@ -36,11 +55,11 @@ get_cpu() {
   logical=$(sysctl -n hw.logicalcpu 2>/dev/null || echo 0)
   freq=$(sysctl -n hw.cpufrequency_max 2>/dev/null || echo 0)
   local freq_mhz=0
-  [ "$freq" -gt 0 ] && freq_mhz=$(( freq / 1000000 ))
+  if [[ "$freq" =~ ^[0-9]+$ ]] && [ "$freq" -gt 0 ]; then freq_mhz=$(( freq / 1000000 )); fi
 
   # CPU usage via top (1 sample)
   load=$(top -l 1 -n 0 2>/dev/null | awk '/CPU usage/{gsub(/%/,""); print 100-$NF}' | head -1)
-  [ -z "$load" ] && load="null"
+  load=$(num_or_null "$load")
 
   # Temperature: Apple Silicon via powermetrics (needs sudo), Intel via osx-cpu-temp or iStatistica
   temp="null"
@@ -58,7 +77,7 @@ get_cpu() {
   fi
 
   cat <<EOF
-"cpu":{"name":"${name}","cores":${cores},"logicalCores":${logical},"maxClockMHz":${freq_mhz},"load":${load},"temperatureC":${temp},"tempSource":${temp_source}}
+"cpu":{"name":"$(json_escape "$name")","cores":${cores},"logicalCores":${logical},"maxClockMHz":${freq_mhz},"load":${load},"temperatureC":${temp},"tempSource":${temp_source}}
 EOF
 }
 
@@ -68,9 +87,9 @@ get_gpu() {
   # NVIDIA (eGPU or old Mac Pro)
   if command -v nvidia-smi &>/dev/null; then
     while IFS=',' read -r name temp util vmem_used vmem_total fan power plimit core_clk mem_clk; do
-      name=$(echo "$name" | xargs)
+      name=$(json_escape "$(echo "$name" | xargs)")
       gpus+=$(cat <<EOF
-{"vendor":"NVIDIA","name":"${name}","temperatureC":${temp:-null},"utilizationPct":${util:-null},"vramUsedMB":${vmem_used:-null},"vramTotalMB":${vmem_total:-null},"fanSpeedPct":${fan:-null},"powerDrawW":${power:-null},"powerLimitW":${plimit:-null},"coreClockMHz":${core_clk:-null},"memClockMHz":${mem_clk:-null},"source":"nvidia-smi"},
+{"vendor":"NVIDIA","name":"${name}","temperatureC":$(num_or_null "$(echo "${temp:-}" | xargs)"),"utilizationPct":$(num_or_null "$(echo "${util:-}" | xargs)"),"vramUsedMB":$(num_or_null "$(echo "${vmem_used:-}" | xargs)"),"vramTotalMB":$(num_or_null "$(echo "${vmem_total:-}" | xargs)"),"fanSpeedPct":$(num_or_null "$(echo "${fan:-}" | xargs)"),"powerDrawW":$(num_or_null "$(echo "${power:-}" | xargs)"),"powerLimitW":$(num_or_null "$(echo "${plimit:-}" | xargs)"),"coreClockMHz":$(num_or_null "$(echo "${core_clk:-}" | xargs)"),"memClockMHz":$(num_or_null "$(echo "${mem_clk:-}" | xargs)"),"source":"nvidia-smi"},
 EOF
       )
     done < <(nvidia-smi --query-gpu=name,temperature.gpu,utilization.gpu,memory.used,memory.total,fan.speed,power.draw,power.limit,clocks.current.graphics,clocks.current.memory --format=csv,noheader,nounits 2>/dev/null)
@@ -98,7 +117,7 @@ EOF
       # Skip if NVIDIA already captured
       [[ "$vendor" == "NVIDIA" ]] && continue
 
-      gpus+="{\"vendor\":\"${vendor}\",\"name\":\"${gname}\",\"vramTotalMB\":${vram},\"source\":\"system_profiler\"},"
+      gpus+="{\"vendor\":\"${vendor}\",\"name\":\"$(json_escape "$gname")\",\"vramTotalMB\":${vram},\"source\":\"system_profiler\"},"
     fi
   done <<< "$sp_out"
 
@@ -136,7 +155,7 @@ get_ram() {
     spd=$(system_profiler SPMemoryDataType 2>/dev/null | grep -A5 "$line" | grep "Speed" | grep -oE '[0-9]+' | head -1)
     mfr=$(system_profiler SPMemoryDataType 2>/dev/null | grep -A5 "$line" | grep "Manufacturer" | awk -F': ' '{print $2}' | xargs)
     type=$(system_profiler SPMemoryDataType 2>/dev/null | grep -A5 "$line" | grep "Type" | awk -F': ' '{print $2}' | xargs)
-    [ -n "$sz" ] && slots_json+="{\"capacityGB\":${sz},\"speedMHz\":${spd:-null},\"manufacturer\":\"${mfr:-Unknown}\",\"type\":\"${type:-Unknown}\"},"
+    [ -n "$sz" ] && slots_json+="{\"capacityGB\":${sz},\"speedMHz\":${spd:-null},\"manufacturer\":\"$(json_escape "${mfr:-Unknown}")\",\"type\":\"$(json_escape "${type:-Unknown}")\"},"
   done < <(system_profiler SPMemoryDataType 2>/dev/null | grep "Size:" | awk -F': ' '{print $2}')
 
   slots_json="${slots_json%,}]"
@@ -158,7 +177,7 @@ get_fans() {
     while IFS= read -r line; do
       local fname; fname=$(echo "$line" | awk '{print $1}')
       local rpm; rpm=$(echo "$line" | grep -oE '[0-9]+' | tail -1)
-      fans+="{\"name\":\"${fname}\",\"rpm\":${rpm:-null},\"source\":\"powermetrics\"},"
+      fans+="{\"name\":\"$(json_escape "$fname")\",\"rpm\":${rpm:-null},\"source\":\"powermetrics\"},"
     done <<< "$pm"
   fi
 
@@ -168,7 +187,7 @@ get_fans() {
     while IFS= read -r line; do
       local fname; fname=$(echo "$line" | awk '{print $1}')
       local rpm; rpm=$(echo "$line" | grep -oE '[0-9]+' | head -1)
-      fans+="{\"name\":\"${fname}\",\"rpm\":${rpm:-null},\"source\":\"smcutil\"},"
+      fans+="{\"name\":\"$(json_escape "$fname")\",\"rpm\":${rpm:-null},\"source\":\"smcutil\"},"
     done <<< "$smc_out"
   fi
 
@@ -188,7 +207,7 @@ get_disk() {
     name=$(diskutil info "$mp" 2>/dev/null | grep "Device / Media Name:" | awk -F': ' '{print $2}' | xargs)
     local fs; fs=$(echo "$line" | awk '{print $1}' | cut -d/ -f1)
     [ -z "$name" ] && name="$mp"
-    drives+="{\"mountpoint\":\"${mp}\",\"totalGB\":${size_raw:-0},\"freeGB\":${avail_raw:-0},\"usedPct\":${used_pct:-null},\"filesystem\":\"${fs}\",\"label\":\"${name}\"},"
+    drives+="{\"mountpoint\":\"$(json_escape "$mp")\",\"totalGB\":$(num_or_null "${size_raw:-}"),\"freeGB\":$(num_or_null "${avail_raw:-}"),\"usedPct\":$(num_or_null "${used_pct:-}"),\"filesystem\":\"$(json_escape "$fs")\",\"label\":\"$(json_escape "$name")\"},"
   done < <(df -g 2>/dev/null | tail -n +2 | grep -v "tmpfs\|devfs\|map\|auto_home")
 
   drives="${drives%,}]"
@@ -200,7 +219,7 @@ get_disk() {
     local io_out; io_out=$(iostat -d 1 2 2>/dev/null | tail -1)
     local kb_read; kb_read=$(echo "$io_out" | awk '{print $1}')
     local kb_write; kb_write=$(echo "$io_out" | awk '{print $2}')
-    io_json="{\"readKBPerSec\":${kb_read:-0},\"writeKBPerSec\":${kb_write:-0}}"
+    io_json="{\"readKBPerSec\":$(num_or_null "${kb_read:-}"),\"writeKBPerSec\":$(num_or_null "${kb_write:-}")}"
   fi
 
   echo "\"disk\":{\"drives\":${drives},\"io\":${io_json}}"
@@ -214,7 +233,7 @@ get_network() {
     mac=$(ifconfig "$iface" 2>/dev/null | awk '/ether/{print $2}')
     status=$(ifconfig "$iface" 2>/dev/null | awk '/status/{print $2}')
     [ -z "$ip" ] && continue
-    adapters+="{\"interface\":\"${iface}\",\"ipAddress\":\"${ip}\",\"macAddress\":\"${mac:-N/A}\",\"status\":\"${status:-unknown}\"},"
+    adapters+="{\"interface\":\"$(json_escape "$iface")\",\"ipAddress\":\"${ip}\",\"macAddress\":\"${mac:-N/A}\",\"status\":\"${status:-unknown}\"},"
   done < <(ifconfig -l 2>/dev/null | tr ' ' '\n' | grep -v "^lo")
 
   adapters="${adapters%,}]"

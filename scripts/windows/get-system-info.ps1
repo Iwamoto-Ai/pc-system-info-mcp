@@ -20,8 +20,14 @@ param(
 $ErrorActionPreference = "SilentlyContinue"
 
 function Get-CPUInfo {
-    $cpu     = Get-CimInstance -ClassName Win32_Processor | Select-Object -First 1
-    $loadPct = (Get-CimInstance -ClassName Win32_Processor).LoadPercentage
+    # Single CIM query; average load across sockets (LoadPercentage is an
+    # array on multi-socket systems)
+    $cpus    = @(Get-CimInstance -ClassName Win32_Processor)
+    $cpu     = $cpus[0]
+    $loads   = @($cpus | ForEach-Object { $_.LoadPercentage } | Where-Object { $null -ne $_ })
+    $loadPct = if ($loads.Count -gt 0) {
+        [math]::Round(($loads | Measure-Object -Average).Average, 1)
+    } else { $null }
 
     $tempC       = $null
     $tempSrcName = $null
@@ -152,14 +158,29 @@ function Get-RAMInfo {
 }
 
 function Get-FanInfo {
+    # Win32_Fan lives in root/cimv2 (NOT root/WMI). Even so, most consumer
+    # motherboards do not expose fan RPM through standard WMI, so rpm may be
+    # null. A note field explains the situation to the caller/LLM.
     $fans = @()
     try {
-        $cimFans = Get-CimInstance -Namespace "root/WMI" -ClassName Win32_Fan -ErrorAction Stop
+        $cimFans = @(Get-CimInstance -ClassName Win32_Fan -ErrorAction Stop)
         $fans = $cimFans | ForEach-Object {
-            @{ name = $_.Name; rpm = $null; source = "CIM" }
+            @{
+                name   = $_.Name
+                rpm    = if ($_.DesiredSpeed) { [int64]$_.DesiredSpeed } else { $null }
+                status = $_.Status
+                source = "CIM (Win32_Fan)"
+            }
         }
     } catch {}
-    return $fans
+
+    if ($fans.Count -eq 0) {
+        return @{
+            fans = @()
+            note = "Fan RPM is not exposed via standard Windows WMI on this hardware. Third-party sensor tools are intentionally not used (WinRing0 vulnerability, CVE-2020-14979)."
+        }
+    }
+    return @{ fans = $fans; note = $null }
 }
 
 function Get-DiskInfo {
@@ -215,15 +236,21 @@ function Get-NetworkInfo {
 
     $netIO = @()
     try {
-        $instances = (Get-Counter "\Network Interface(*)\Bytes Received/sec" -ErrorAction Stop).CounterSamples |
-                     Where-Object { $_.InstanceName -ne "_total" }
-        foreach ($s in $instances) {
-            $sname = $s.InstanceName
-            $sent  = (Get-Counter "\Network Interface($sname)\Bytes Sent/sec" -ErrorAction Stop).CounterSamples[0].CookedValue
+        # Fetch both counters for all interfaces in ONE call (~1s sampling),
+        # instead of one Get-Counter call per interface (N+1, very slow)
+        $samples = (Get-Counter `
+            "\Network Interface(*)\Bytes Received/sec", `
+            "\Network Interface(*)\Bytes Sent/sec" -ErrorAction Stop).CounterSamples |
+            Where-Object { $_.InstanceName -ne "_total" }
+
+        $byIface = $samples | Group-Object InstanceName
+        foreach ($g in $byIface) {
+            $recv = ($g.Group | Where-Object { $_.Path -like "*received*" } | Select-Object -First 1).CookedValue
+            $sent = ($g.Group | Where-Object { $_.Path -like "*sent*" }     | Select-Object -First 1).CookedValue
             $netIO += @{
-                interface       = $sname
-                recvBytesPerSec = [math]::Round($s.CookedValue)
-                sentBytesPerSec = [math]::Round($sent)
+                interface       = $g.Name
+                recvBytesPerSec = if ($null -ne $recv) { [math]::Round($recv) } else { $null }
+                sentBytesPerSec = if ($null -ne $sent) { [math]::Round($sent) } else { $null }
             }
         }
     } catch {}
