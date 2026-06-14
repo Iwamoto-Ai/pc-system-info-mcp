@@ -1,7 +1,7 @@
-# v1.2.0 変更点(改善レポート反映)
+# v1.2.0 変更点
 
-## バグ修正
-- **Windowsファン情報**: `Win32_Fan` を誤った名前空間(root/WMI)で照会していたバグを修正(正: root/cimv2)。`DesiredSpeed` があればRPMとして返し、取得不可時は理由を示す `note` を返すように変更
+## 改善
+- **Windowsファン情報**: `Win32_Fan` を誤った名前空間(root/WMI)で照会していた箇所を修正(正: root/cimv2)。`DesiredSpeed` があればRPMとして返し、取得不可時は理由を示す `note` を返すように変更
 - **CPU負荷**: `Win32_Processor` の二重照会を解消し、マルチソケット環境(LoadPercentageが配列)で平均値を返すように修正
 - **macOSスクリプト**: 手組みJSONに `json_escape` を導入(ホスト名・モデル名・GPU名等に `"` や `\` が含まれてもJSONが壊れない)。`num_or_null` で非数値(nvidia-smiの "[N/A]" 等)を null に正規化し、`set -e` 下での数値比較による異常終了を防止
 
