@@ -17,16 +17,17 @@
 
 ## ドキュメント(READMEを実装と整合)
 - clone URL のプレースホルダ(YourName)を実URLに修正
-- LibreHardwareMonitor / OpenHardwareMonitor の設定手順を削除し、WinRing0脆弱性(CVE-2020-14979)を理由とした不使用方針をセキュリティ節に明記。センサー取得元一覧も実装準拠に修正
+- LibreHardwareMonitor / OpenHardwareMonitor についての WinRing0脆弱性(CVE-2020-14979)を理由とした不使用方針をセキュリティ節に明記。センサー取得元一覧も実装準拠に修正
 - Intel Core Ultra の「iGPU温度近似」など未実装機能の記述を削除
 - 対応表のファン(Windows)を「取得不可」に訂正
 - 不要だった chmod / Set-ExecutionPolicy 手順を削除(bash経由実行・Bypass指定のため)
 - OpenClaw / Hermes Agent の設定・トラブルシューティングを docs/openclaw.md / docs/hermes.md に分離
-- 誤字修正(Discode→Discord、Line→LINE、WLS→WSL、韓国語混入の見出し)、重複注意書きの統合、リンク先修正
+- 重複注意書きの統合、リンク先修正
 - 環境変数オプション(PRIVACY_MODE / MCP_LENIENT_MODE / CACHE_TTL_MS)の説明を追加
 
 ## 運用
 - `.github/workflows/ci.yml` を追加(windows-latest / macos-latest でビルド+スクリプト出力のJSON妥当性検証)
 - `.gitignore` を追加し dist/ をコミット対象外に(npm の `files` フィールドで配布物は担保)
 - package.json に author / repository / files を追記
-- 未使用の HWMonitor 連携スクリプトを scripts/windows/legacy/ に移動
+- 未使用の LibreHardwareMonitor / OpenHardwareMonitor 連携スクリプト（WinRing0脆弱性あり注意）は scripts/windows/caution/ に格納
+- 
