@@ -145,7 +145,12 @@ get_ram() {
   local free_gb; free_gb=$(awk "BEGIN{printf \"%.2f\", $free_bytes/1073741824}")
   local used_bytes_val=$(( total_bytes - free_bytes ))
   local used_gb; used_gb=$(awk "BEGIN{printf \"%.2f\", $used_bytes_val/1073741824}")
-  local used_pct_val; used_pct_val=$(awk "BEGIN{printf \"%.1f\", ($used_bytes_val/$total_bytes)*100}")
+  local used_pct_val
+  if [ "${total_bytes:-0}" -gt 0 ] 2>/dev/null; then
+    used_pct_val=$(awk "BEGIN{printf \"%.1f\", ($used_bytes_val/$total_bytes)*100}")
+  else
+    used_pct_val="null"
+  fi
 
   # DIMM info
   local slots_json="["

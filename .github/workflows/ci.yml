@@ -1,0 +1,69 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  # ── Build + static checks (Linux) ───────────────────────────────
+  build:
+    name: Build & lint (ubuntu)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+      - run: npm ci
+      - name: TypeScript build
+        run: npm run build
+      - name: Syntax-check the macOS shell script
+        run: bash -n scripts/macos/get-system-info.sh
+      - name: ShellCheck (non-blocking)
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y shellcheck
+          shellcheck -S warning scripts/macos/get-system-info.sh || true
+      - name: Validate JSON config files in docs/
+        run: |
+          for f in docs/*.json; do
+            echo "Validating $f"
+            node -e "JSON.parse(require('fs').readFileSync('$f','utf8'))"
+          done
+
+  # ── macOS: run the collector and validate its JSON output ───────
+  macos-output:
+    name: macOS script JSON output
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+      - run: npm ci
+      - run: npm run build
+      - name: Run collector and validate JSON
+        run: |
+          bash scripts/macos/get-system-info.sh all > out.json
+          node -e "const fs=require('fs');const t=fs.readFileSync('out.json','utf8').replace(/^\uFEFF/,'');JSON.parse(t);console.log('macOS output is valid JSON');"
+
+  # ── Windows: run the collector and validate its JSON output ─────
+  windows-output:
+    name: Windows script JSON output
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+      - run: npm ci
+      - run: npm run build
+      - name: Run collector and validate JSON
+        shell: pwsh
+        run: |
+          powershell -NonInteractive -NoProfile -ExecutionPolicy Bypass -File scripts/windows/get-system-info.ps1 -Category all | Out-File -Encoding utf8 out.json
+          node -e "const fs=require('fs');const t=fs.readFileSync('out.json','utf8').replace(/^\uFEFF/,'');JSON.parse(t);console.log('Windows output is valid JSON');"

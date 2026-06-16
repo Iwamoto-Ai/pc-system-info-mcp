@@ -1,0 +1,21 @@
+# Dependencies
+node_modules/
+
+# Build output (regenerated via `npm run build`; also built by the
+# `prepare` lifecycle script on install and before `npm publish`)
+dist/
+
+# Logs / debug
+*.log
+npm-debug.log*
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# Environment
+.env
+.env.local

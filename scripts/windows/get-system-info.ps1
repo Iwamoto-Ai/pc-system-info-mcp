@@ -153,7 +153,7 @@ function Get-RAMInfo {
         availableGB = [math]::Round($os.FreePhysicalMemory / 1MB, 2)
         usedGB      = [math]::Round(($cs.TotalPhysicalMemory - $os.FreePhysicalMemory * 1KB) / 1GB, 2)
         usedPct     = [math]::Round((1 - $os.FreePhysicalMemory * 1KB / $cs.TotalPhysicalMemory) * 100, 1)
-        slots       = $slots
+        slots       = @($slots)
     }
 }
 
@@ -180,7 +180,7 @@ function Get-FanInfo {
             note = "Fan RPM is not exposed via standard Windows WMI on this hardware. Third-party sensor tools are intentionally not used (WinRing0 vulnerability, CVE-2020-14979)."
         }
     }
-    return @{ fans = $fans; note = $null }
+    return @{ fans = @($fans); note = $null }
 }
 
 function Get-DiskInfo {
@@ -205,7 +205,7 @@ function Get-DiskInfo {
             mediaType    = $disk.MediaType
             interface    = $disk.InterfaceType
             serialNumber = $disk.SerialNumber
-            volumes      = $volInfo
+            volumes      = @($volInfo)
         }
     }
 
@@ -219,7 +219,7 @@ function Get-DiskInfo {
         }
     } catch {}
 
-    return @{ drives = $disks; io = $diskIO }
+    return @{ drives = @($disks); io = $diskIO }
 }
 
 function Get-NetworkInfo {
@@ -255,7 +255,7 @@ function Get-NetworkInfo {
         }
     } catch {}
 
-    return @{ adapters = $adapters; throughput = $netIO }
+    return @{ adapters = @($adapters); throughput = @($netIO) }
 }
 
 function Get-SystemOverview {
@@ -287,7 +287,7 @@ $result = @{}
 
 switch ($Category.ToLower()) {
     "cpu"      { $result.cpu      = Get-CPUInfo }
-    "gpu"      { $result.gpu      = Get-GPUInfo }
+    "gpu"      { $result.gpu      = @(Get-GPUInfo) }
     "ram"      { $result.ram      = Get-RAMInfo }
     "fan"      { $result.fan      = Get-FanInfo }
     "disk"     { $result.disk     = Get-DiskInfo }
@@ -296,7 +296,7 @@ switch ($Category.ToLower()) {
     default {
         $result.overview = Get-SystemOverview
         $result.cpu      = Get-CPUInfo
-        $result.gpu      = Get-GPUInfo
+        $result.gpu      = @(Get-GPUInfo)
         $result.ram      = Get-RAMInfo
         $result.fan      = Get-FanInfo
         $result.disk     = Get-DiskInfo

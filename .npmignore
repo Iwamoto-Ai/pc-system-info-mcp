@@ -1,0 +1,17 @@
+# Reference-only / unmaintained experimental scripts that depend on
+# kernel sensor drivers (LibreHardwareMonitor / OpenHardwareMonitor →
+# WinRing0.sys, CVE-2020-14979). The project deliberately does NOT use
+# these at runtime, so they must never ship in the published package.
+scripts/windows/caution/
+
+# Source maps and TS declarations are not needed by end users running the
+# compiled server; keep the published tarball small.
+dist/*.map
+dist/*.d.ts.map
+
+# Dev-only files
+src/
+docs/
+tsconfig.json
+.github/
+CHANGES.md
