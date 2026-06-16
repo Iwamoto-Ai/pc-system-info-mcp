@@ -219,8 +219,7 @@ pc-system-info-mcp/
 │   └── index.ts                    # MCPサーバー本体
 ├── scripts/
 │   ├── windows/
-│   │   ├── get-system-info.ps1     # Windows PowerShell スクリプト
-│   │   └── diagnose-lhm.ps1        # (参考) センサーWMI診断スクリプト
+│   │   └── get-system-info.ps1     # Windows PowerShell スクリプト
 │   └── macos/
 │       └── get-system-info.sh      # macOS Bash スクリプト
 ├── docs/
