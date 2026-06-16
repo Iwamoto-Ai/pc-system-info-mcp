@@ -1,4 +1,4 @@
-name: CI
+﻿name: CI
 
 on:
   push:
@@ -7,13 +7,13 @@ on:
     branches: [main]
 
 jobs:
-  # ── Build + static checks (Linux) ───────────────────────────────
+  # 笏笏 Build + static checks (Linux) 笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏
   build:
     name: Build & lint (ubuntu)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: "20"
           cache: "npm"
@@ -33,13 +33,13 @@ jobs:
             node -e "JSON.parse(require('fs').readFileSync('$f','utf8'))"
           done
 
-  # ── macOS: run the collector and validate its JSON output ───────
+  # 笏笏 macOS: run the collector and validate its JSON output 笏笏笏笏笏笏笏
   macos-output:
     name: macOS script JSON output
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: "20"
           cache: "npm"
@@ -50,13 +50,13 @@ jobs:
           bash scripts/macos/get-system-info.sh all > out.json
           node -e "const fs=require('fs');const t=fs.readFileSync('out.json','utf8').replace(/^\uFEFF/,'');JSON.parse(t);console.log('macOS output is valid JSON');"
 
-  # ── Windows: run the collector and validate its JSON output ─────
+  # 笏笏 Windows: run the collector and validate its JSON output 笏笏笏笏笏
   windows-output:
     name: Windows script JSON output
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: "20"
           cache: "npm"
