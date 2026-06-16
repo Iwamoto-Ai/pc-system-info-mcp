@@ -29,5 +29,6 @@
 - `.github/workflows/ci.yml` を追加(windows-latest / macos-latest でビルド+スクリプト出力のJSON妥当性検証)
 - `.gitignore` を追加し dist/ をコミット対象外に(npm の `files` フィールドで配布物は担保)
 - package.json に author / repository / files を追記
+
+## その他
 - 未使用の LibreHardwareMonitor / OpenHardwareMonitor 連携スクリプト（WinRing0脆弱性あり注意）は scripts/windows/caution/ に格納
-- 
