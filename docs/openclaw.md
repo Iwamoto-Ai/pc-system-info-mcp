@@ -12,20 +12,19 @@ OpenClaw と組み合わせると、外出先から LINE や Discord で自宅PC
 
 | モデル | ツール呼び出し | 日本語 | 必要VRAM | 備考 |
 | --- | --- | --- | --- | --- |
-| **nemotron-nano** | ◎ 安定 | ◎ | 12GB以上 | **推奨** |
-| **mistral-nemo** | ◎ 安定 | ◎ | 12GB以上 | **推奨** |
-| llama-3.3-70b-versatile | 〇 安定 | ◎ | 48GB以上 | |
-| google/gemma-3-27b-it | 〇 安定 | ◎ | 35GB以上 | |
+| **nemotron-nano** | 〇 | ◎ | 12GB以上 | |
+| llama-3.3-70b-versatile | ◎ 安定 | ◎ | 48GB以上 | **推奨** |
+| google/gemma-3-27b-it | △ | ◎ | 35GB以上 | |
+| qwen3.5-9b | ◎ 安定  | 〇 | 12GB以上 | **推奨** |
+| qwen2.5-coder-7b-instruct | ◎  | △ | 12GB以上 | |
 | qwen3:14b | △  | △ | 12GB以上 | |
 | qwen3:8b | ✗ 不安定 | △ | 8GB以上 | ツール呼び出しに失敗する |
 | qwen3:1.7b | ✗ 非対応 | △ | 6GB以上 | MCPツール呼び出し不可 |
 
-MCPツール呼び出しを安定して使うには **nemotron-nano か mistral-nemo** が良いです。
-2026年5月時点では「nvidia-nemotron-nano-9b-v2-japanese」を一番推奨。
 
 ```powershell
-# nemotron-nano のインストール(Windows PowerShell)
-ollama pull fuukeidaisuki/nvidia-nemotron-nano-9b-v2-japanese  # 約6.5GB
+# qwen3.5:9b のインストール(Windows PowerShell)
+ollama pull qwen3.5:9b
 ```
 
 ## 設定手順
@@ -49,11 +48,11 @@ openclaw mcp show pc-system-info
 ### ステップ2: モデルを登録・設定
 
 ```bash
-# nemotron-nanoをOpenClawに登録
-openclaw config set models.providers.ollama.models '[{"id":"nemotron-nano","name":"nemotron nano 9b v2","input":["text"],"contextWindow":128000,"maxTokens":4096}]'
+# qwen3.5:9b をOpenClawに登録
+openclaw config set models.providers.ollama.models '[{"id":"qwen3.5:9b","name":"ollama/qwen3.5:9b","input":["text"],"contextWindow":128000,"maxTokens":4096}]'
 
 # デフォルトモデルに設定
-openclaw config set agents.defaults.model '{"primary":"ollama/nemotron-nano"}'
+openclaw config set agents.defaults.model '{"primary":"ollama/qwen3.5:9b"}'
 
 # 思考モードをオフ(誤動作防止)
 openclaw config set agents.defaults.thinkingDefault '"off"'
@@ -127,11 +126,11 @@ openclaw gateway restart
 
 ローカルLLMがMCPツールを無視して返答する場合:
 
-1. **モデルを nemotron-nano に切り替える**(最も効果的)
+1. **モデルを qwen3.5:9b に切り替える**(最も効果的)
 
 ```bash
-ollama pull fuukeidaisuki/nvidia-nemotron-nano-9b-v2-japanese
-openclaw config set agents.defaults.model '{"primary":"ollama/fuukeidaisuki/nvidia-nemotron-nano-9b-v2-japanese"}'
+ollama pull qwen3.5:9b
+openclaw config set agents.defaults.model '{"primary":"ollama/qwen3.5:9b"}'
 openclaw gateway restart
 ```
 
@@ -157,7 +156,7 @@ openclaw gateway restart
 Ollamaのモデルを OpenClaw に明示的に登録する必要があります:
 
 ```bash
-openclaw config set models.providers.ollama.models '[{"id":"nemotron-nano","name":"Nvidia nemotron nano 9b v2 japanese","input":["text"],"contextWindow":128000,"maxTokens":4096}]'
+openclaw config set models.providers.ollama.models '[{"id":"qwen3.5:9b","name":"ollama/qwen3.5:9b","input":["text"],"contextWindow":128000,"maxTokens":4096}]'
 ```
 
 ### セッションが古いモデルを使い続ける
