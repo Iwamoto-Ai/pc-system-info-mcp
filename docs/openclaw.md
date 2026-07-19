@@ -15,8 +15,8 @@ OpenClaw と組み合わせると、外出先から LINE や Discord で自宅PC
 | **nemotron-nano** | 〇 | ◎ | 12GB以上 | |
 | llama-3.3-70b-versatile | ◎ 安定 | ◎ | 48GB以上 | **推奨** |
 | google/gemma-3-27b-it | △ | ◎ | 35GB以上 | |
-| qwen3.5-9b | ◎ 安定  | 〇 | 12GB以上 | **推奨** |
-| qwen2.5-coder-7b-instruct | ◎  | △ | 12GB以上 | |
+| qwen3.5-9b | ◎ 安定  | ◎ | 12GB以上 | **推奨** |
+| qwen2.5-coder-7b-instruct | 〇  | △ | 12GB以上 | |
 | qwen3:14b | △  | △ | 12GB以上 | |
 | qwen3:8b | ✗ 不安定 | △ | 8GB以上 | ツール呼び出しに失敗する |
 | qwen3:1.7b | ✗ 非対応 | △ | 6GB以上 | MCPツール呼び出し不可 |
