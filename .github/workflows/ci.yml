@@ -58,6 +58,9 @@ jobs:
   windows-output:
     name: Windows script JSON output
     runs-on: windows-latest
+    permissions:
+      contents: read
+      pull-requests: write
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
@@ -101,3 +104,23 @@ jobs:
               Write-Output "::notice title=$c output::$t"
             }
           }
+      # TEMPORARY (debugging v2.0.0 on Windows): post raw outputs as a PR comment
+      - name: Debug report to PR
+        if: always() && github.event_name == 'pull_request'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $sb = New-Object System.Text.StringBuilder
+          [void]$sb.AppendLine("CI debug report ($env:GITHUB_SHA)")
+          foreach ($f in (Get-ChildItem out-*.json, err-*.txt -ErrorAction SilentlyContinue)) {
+            $t = Get-Content $f.FullName -Raw -ErrorAction SilentlyContinue
+            if ($null -eq $t) { $t = "" }
+            [void]$sb.AppendLine("### $($f.Name) ($($f.Length) bytes)")
+            [void]$sb.AppendLine('```')
+            [void]$sb.AppendLine($t.Substring(0, [math]::Min(2500, $t.Length)))
+            [void]$sb.AppendLine('```')
+          }
+          if ($sb.Length -lt 60) { [void]$sb.AppendLine("No out/err files were produced.") }
+          $sb.ToString() | Out-File -Encoding utf8 debug.md
+          gh pr comment ${{ github.event.pull_request.number }} --body-file debug.md
