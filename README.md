@@ -6,16 +6,17 @@
 [![MCP](https://img.shields.io/badge/MCP-Compatible-purple.svg)](https://modelcontextprotocol.io/)
 
 PCのシステム情報を取得する **Model Context Protocol (MCP) サーバー**です。
-CPU/GPU稼働状況、RAM/VRAM、ディスク、ネットワーク情報を Claude Desktop、🦞OpenClaw、Hermes Agent から自然言語で確認できます。
+CPU/GPU/NPU稼働状況、消費電力、RAM/VRAM、ディスク、ネットワーク情報を Claude Desktop、🦞OpenClaw、Hermes Agent から自然言語で確認できます。
 
 プロンプト例: 「CPUとGPUの状況を教えて」など
 
 🦞 OpenClaw と組み合わせれば、外出先から LINE や Discord で自宅PCの状況確認にも使えます。
-**※リモート利用時は後述の [プライバシーモード](#-セキュリティプライバシー) の利用を推奨します。**
+**※シリアル番号・MAC・IPアドレス等は既定で末尾4文字以外をマスクします([プライバシーモード](#-セキュリティプライバシー))。**
 
 > **⚠️ 設計方針**
 > - Windows の WMIC コマンドは廃止されたため使用せず、`Get-CimInstance`(PowerShell)を使用します。
 > - LibreHardwareMonitor / OpenHardwareMonitor は **使用しません**(依存ドライバー WinRing0.sys に既知の脆弱性 CVE-2020-14979 があるため)。このため Windows での CPU温度・ファンRPM の取得には制約があります(下記の対応表を参照)。
+> - Windows では、カーネルドライバー・管理者権限・追加ソフトなしで取得できる情報(標準API・パフォーマンスカウンター)のみを使用します。温度が取れない環境でも、**消費電力(RAPL)を負荷・発熱の目安**として取得できます。
 
 ---
 
@@ -25,9 +26,13 @@ CPU/GPU稼働状況、RAM/VRAM、ディスク、ネットワーク情報を Clau
 | --- | --- | --- | --- |
 | **システム概要** | OS・ホスト名・稼働時間・マザーボード・BIOS | ✅ | ✅ |
 | **CPU** | 名称・コア数・クロック速度・負荷% | ✅ | ✅ |
+| **CPU構成** | P-core / E-core / LP E-core の数とコア種別ごとの負荷%・L2/L3キャッシュ・マイクロコード・命令セット(AVX2等) | ✅⁶ | ❌ |
 | **CPU温度** | 温度°C | ⚠️ 一部環境のみ¹ | ⚠️ 要追加設定² |
+| **消費電力** | CPUパッケージ・CPUコア・内蔵GPU・DRAM(W) | ✅⁷ | ❌ |
 | **GPU (NVIDIA)** | 名称・温度°C・使用率%・VRAM使用量・ファン速度%・消費電力W・クロック | ✅³ | ✅³ |
-| **GPU (AMD/Intel/Apple)** | 名称・VRAM総量・ドライババージョン | ✅ | ✅ |
+| **GPU (Intel/AMD 内蔵)** | 名称・使用率%・最も負荷の高いエンジン・共有メモリ使用量・消費電力W(Intel) | ✅⁸ | ✅(名称・VRAM) |
+| **GPU温度 (内蔵)** | 温度°C | ❌ 取得不可⁹ | ❌ |
+| **NPU** | 名称・使用率%(Intel AI Boost 等) | ✅⁸ | ❌ |
 | **RAM** | 総容量・使用量・空き容量・使用率%・スロット情報 | ✅ | ✅ |
 | **ファン回転数** | RPM | ❌ 取得不可⁴ | ⚠️ sudo必要⁵ |
 | **ディスク** | モデル・容量・インターフェース・ボリューム使用量・読み書き速度 | ✅ | ✅ |
@@ -38,6 +43,10 @@ CPU/GPU稼働状況、RAM/VRAM、ディスク、ネットワーク情報を Clau
 > ³ `nvidia-smi`(NVIDIAドライバー付属)経由。追加ソフト不要です。
 > ⁴ 標準WMIではコンシューマー向けマザーボードのファンRPMは公開されておらず、サードパーティのセンサーツールは上記の方針により使用しないため、現状取得できません。レスポンスには理由を示す `note` が含まれます。
 > ⁵ `powermetrics` 経由(sudo必要)。
+> ⁶ `GetLogicalProcessorInformationEx` / `IsProcessorFeaturePresent`(PowerShellに埋め込んだC#から呼び出し)。Windows は E-core と LP E-core を同じ効率クラスで報告するため、L3キャッシュを共有しないE-coreを LP E-core と判定します。
+> ⁷ Windows 標準のパフォーマンスカウンター「Energy Meter」(Intel/AMD RAPL)。ドライバー不要です。非対応機では `available: false` になります。内蔵GPU・DRAMはプラットフォームによって 0 W(待機中または非対応)になることがあります。
+> ⁸ パフォーマンスカウンター「GPU Engine」「GPU Adapter Memory」。アダプターとの対応付けには DirectX のアダプター情報(レジストリ)を使用します。
+> ⁹ Intel公式の Graphics Control Library(IGCL)でも Meteor Lake の内蔵GPU温度は公開されていないことを確認済みです。
 
 ---
 
@@ -47,7 +56,8 @@ CPU/GPU稼働状況、RAM/VRAM、ディスク、ネットワーク情報を Clau
 | --- | --- |
 | `get_system_overview` | システム全体の概要 |
 | `get_cpu_info` | CPU情報(負荷、温度は取得可能な環境のみ) |
-| `get_gpu_info` | GPU情報(NVIDIAは完全テレメトリ) |
+| `get_gpu_info` | GPU・NPU情報(各要素に `type`: discrete / integrated / virtual / npu。NVIDIAは完全テレメトリ) |
+| `get_power_info` | 消費電力(CPUパッケージ・コア・内蔵GPU・DRAM、Windowsのみ) |
 | `get_ram_info` | RAM使用状況・DIMMスロット |
 | `get_fan_info` | ファン情報(取得可否と理由を含む) |
 | `get_disk_info` | ストレージ情報・I/Oスループット |
@@ -134,7 +144,7 @@ OpenClaw への設定(`mcpServers` キーは使えません)は [docs/openclaw.m
 
 | 環境変数 | 既定値 | 説明 |
 | --- | --- | --- |
-| `PRIVACY_MODE` | `0` | `1` でシリアル番号・MACアドレス・IPアドレス・DNS・ゲートウェイを `[REDACTED]` にマスク |
+| `PRIVACY_MODE` | (未設定) | シリアル番号・MACアドレス・IPアドレス・DNS・ゲートウェイの扱い。**未設定: 末尾4文字以外をマスク(推奨)** / `full`(または `1`): `[REDACTED]` に置換 / `off`(または `0`): マスクなし |
 | `MCP_LENIENT_MODE` | `0` | `1` で未知のツール名を `get_all_system_info` にフォールバック(ローカルLLM向け)。既定ではMCP仕様どおりエラーを返します |
 | `CACHE_TTL_MS` | `3000` | 結果キャッシュの有効期間(ミリ秒)。同一カテゴリの連続呼び出しでスクリプトを多重起動しません |
 
@@ -146,11 +156,22 @@ OpenClaw への設定(`mcpServers` キーは使えません)は [docs/openclaw.m
     "pc-system-info": {
       "command": "node",
       "args": ["/Users/YourName/pc-system-info-mcp/dist/index.js"],
-      "env": { "PRIVACY_MODE": "1" }
+      "env": { "PRIVACY_MODE": "full" }
     }
   }
 }
 ```
+
+`PRIVACY_MODE` の動作例:
+
+| 値 | MACアドレス | ディスクのシリアル番号 |
+| --- | --- | --- |
+| 未設定(既定) | `**:**:**:**:8D:2D` | `****_****_..._DB96.` |
+| `full` / `1` | `[REDACTED]` | `[REDACTED]` |
+| `off` / `0` | `C8:A3:62:18:8D:2D` | `E823_8FA6_..._DB96.` |
+
+> 既定のマスクでも末尾4文字が残るため、同じメーカー・同じモデルのディスクを複数使っている場合の識別に使えます。
+> v1.x で `PRIVACY_MODE=1` を設定していた場合は、引き続き完全に隠されます(意味は変わりません)。
 
 ---
 
@@ -160,7 +181,9 @@ OpenClaw への設定(`mcpServers` キーは使えません)は [docs/openclaw.m
 
 標準WMI(`MSAcpi_ThermalZoneTemperature`)のみを使用します。対応ハードウェアは限られており、取得できない場合は `temperatureC: null` と `tempNote` が返ります。
 
-Intel Core Ultra(Meteor Lake / Arrow Lake)世代は標準WMIで温度を公開しないため取得できません。NVIDIA外付けGPUの温度は `nvidia-smi` 経由で正常に取得できます。
+Intel Core Ultra(Meteor Lake / Arrow Lake)世代は標準WMIで温度を公開しないため取得できません。内蔵GPUの温度も、Intel公式の IGCL を含めて取得できないことを確認しています。NVIDIA外付けGPUの温度は `nvidia-smi` 経由で正常に取得できます。
+
+温度が取れない環境では、`get_power_info` / `cpu.power` の**消費電力**を負荷・発熱の目安として使ってください(消費電力と発熱はほぼ比例します)。
 
 > LibreHardwareMonitor / OpenHardwareMonitor を使えばCPU温度・ファンRPMを取得できますが、依存ドライバー WinRing0.sys の脆弱性(CVE-2020-14979)のため本プロジェクトでは対応していません。
 
@@ -209,6 +232,7 @@ Claude: [get_ram_info を実行]
 ```bash
 npm run dev     # 開発モード(ビルド不要)
 npm run build   # ビルド
+npm test        # テスト(ビルド後に実行)
 ```
 
 プロジェクト構成:
@@ -216,7 +240,10 @@ npm run build   # ビルド
 ```
 pc-system-info-mcp/
 ├── src/
-│   └── index.ts                    # MCPサーバー本体
+│   ├── index.ts                    # MCPサーバー本体
+│   └── privacy.ts                  # PRIVACY_MODE(識別情報のマスク)
+├── tests/
+│   └── privacy.test.mjs            # マスク処理のテスト(npm test)
 ├── scripts/
 │   ├── windows/
 │   │   └── get-system-info.ps1     # Windows PowerShell スクリプト
@@ -239,9 +266,9 @@ pc-system-info-mcp/
 
 ## 🔒 セキュリティ・プライバシー
 
-**返却データに含まれる識別情報**: ホスト名、内部IPアドレス、MACアドレス、DNS/ゲートウェイ、ディスクおよび本体のシリアル番号が含まれます。LINE・Discord等の外部メッセンジャー経由でリモート利用する場合は、`PRIVACY_MODE=1` でこれらをマスクすることを強く推奨します。
+**返却データに含まれる識別情報**: ホスト名、内部IPアドレス、MACアドレス、DNS/ゲートウェイ、ディスクのシリアル番号が含まれます。v2.0.0 からは、シリアル番号・MAC・IP・DNS・ゲートウェイを**既定で末尾4文字以外マスク**します。LINE・Discord等の外部メッセンジャー経由でリモート利用する場合は、既定のまま(または `PRIVACY_MODE=full`)で使うことを推奨します。マスクなしは `PRIVACY_MODE=off` で明示的に指定した場合のみです。
 
-**サードパーティドライバー不使用**: WinRing0.sys 脆弱性(CVE-2020-14979)を避けるため、カーネルドライバーに依存するセンサーツールは使用しません。すべて標準API(CIM/WMI、nvidia-smi、sysctl等)で取得します。
+**サードパーティドライバー不使用**: WinRing0.sys 脆弱性(CVE-2020-14979)を避けるため、カーネルドライバーに依存するセンサーツールは使用しません。すべて標準API(CIM/WMI、パフォーマンスカウンター、nvidia-smi、sysctl等)で取得します。PowerShellに埋め込んだC#は、読み取り専用のWindows API(`GetLogicalProcessorInformationEx` / `IsProcessorFeaturePresent`)の呼び出しにのみ使用します。
 
 **PowerShell実行ポリシー**: サーバーは `-ExecutionPolicy Bypass -NoProfile -NonInteractive` でスクリプト単体を起動します。システムの実行ポリシー変更は不要です。
 
@@ -306,6 +333,22 @@ OpenClaw固有のトラブルシューティングは [docs/openclaw.md](docs/op
 ### センサー情報の取得元
 
 ```
+CPU構成(P/E/LP-Eコア)・命令セット:
+  GetLogicalProcessorInformationEx / IsProcessorFeaturePresent(埋め込みC#)
+
+マイクロコード:
+  HKLM\HARDWARE\DESCRIPTION\System\CentralProcessor\0 の Update Revision
+
+消費電力:
+  パフォーマンスカウンター Energy Meter(RAPL: PKG / PP0 / PP1 / DRAM)
+
+内蔵GPU・NPUの使用率、内蔵GPUのメモリ使用量:
+  パフォーマンスカウンター GPU Engine / GPU Adapter Memory
+  (アダプター名との対応付け: HKLM\SOFTWARE\Microsoft\DirectX のアダプター情報)
+
+NPUの検出:
+  Win32_PnPEntity(デバイスクラス ComputeAccelerator)
+
 CPU温度:
   root/WMI MSAcpi_ThermalZoneTemperature(一部環境のみ)
 
@@ -318,8 +361,8 @@ GPU情報 (NVIDIA):
 GPU情報 (AMD/Intel):
   Get-CimInstance Win32_VideoController
 
-ディスクI/O・ネットワークスループット:
-  Get-Counter パフォーマンスカウンター(全インターフェース一括取得)
+ディスクI/O・ネットワークスループット・コア種別ごとの負荷:
+  Get-Counter パフォーマンスカウンター(全カテゴリ分を1回のサンプリングで取得)
 ```
 
 ---

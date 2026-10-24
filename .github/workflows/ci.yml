@@ -19,6 +19,13 @@ jobs:
       - run: npm ci
       - name: TypeScript build
         run: npm run build
+      - name: Unit tests (privacy masking)
+        run: npm test
+      - name: Windows script must be ASCII-only (Windows PowerShell 5.1 reads BOM-less files as ANSI)
+        run: |
+          if LC_ALL=C grep -nP '[^\x00-\x7F]' scripts/windows/get-system-info.ps1; then
+            echo "Non-ASCII characters found"; exit 1
+          fi
       - name: Syntax-check the macOS shell script
         run: bash -n scripts/macos/get-system-info.sh
       - name: ShellCheck (non-blocking)
@@ -59,8 +66,38 @@ jobs:
           cache: "npm"
       - run: npm ci
       - run: npm run build
-      - name: Run collector and validate JSON
+      - name: Run collector for every category and validate JSON (Windows PowerShell 5.1)
         shell: pwsh
         run: |
-          powershell -NonInteractive -NoProfile -ExecutionPolicy Bypass -File scripts/windows/get-system-info.ps1 -Category all | Out-File -Encoding utf8 out.json
-          node -e "const fs=require('fs');const t=fs.readFileSync('out.json','utf8').replace(/^\uFEFF/,'');JSON.parse(t);console.log('Windows output is valid JSON');"
+          $cats = "cpu","gpu","power","ram","fan","disk","network","overview","all"
+          $failed = @()
+          foreach ($c in $cats) {
+            $out = powershell -NonInteractive -NoProfile -ExecutionPolicy Bypass -File scripts/windows/get-system-info.ps1 -Category $c 2> "err-$c.txt"
+            $out | Out-File -Encoding utf8 "out-$c.json"
+            $msg = node -e "const fs=require('fs');const t=fs.readFileSync('out-$c.json','utf8').replace(/^\uFEFF/,'');JSON.parse(t);console.log('${c} valid JSON');" 2>&1
+            if ($LASTEXITCODE -ne 0) {
+              $failed += $c
+              $body = (Get-Content "out-$c.json" -Raw)
+              $err  = (Get-Content "err-$c.txt" -Raw)
+              $clip = { param($t, $n) if ($null -eq $t) { "" } else { $t.Substring(0, [math]::Min($n, $t.Length)) } }
+              $enc  = { param($t) $t -replace '%','%25' -replace "`r",'' -replace "`n",'%0A' }
+              Write-Output ("::error title=${c} invalid JSON::" + (& $enc (& $clip ($msg | Out-String) 600)))
+              Write-Output ("::error title=${c} stdout head::" + (& $enc (& $clip $body 1500)))
+              Write-Output ("::error title=${c} stderr::" + (& $enc (& $clip $err 1500)))
+            } else {
+              Write-Output $msg
+            }
+          }
+          if ($failed.Count -gt 0) { Write-Output "Failed categories: $($failed -join ', ')"; exit 1 }
+      - name: Show cpu / gpu / power output
+        if: always()
+        shell: pwsh
+        run: |
+          foreach ($c in "cpu","gpu","power") {
+            $t = Get-Content "out-$c.json" -Raw -ErrorAction SilentlyContinue
+            Write-Output $t
+            if ($t) {
+              $t = $t.Substring(0, [math]::Min(3000, $t.Length)) -replace '%','%25' -replace "`r",'' -replace "`n",'%0A'
+              Write-Output "::notice title=$c output::$t"
+            }
+          }
