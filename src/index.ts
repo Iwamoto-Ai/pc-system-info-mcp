@@ -1,11 +1,14 @@
 #!/usr/bin/env node
 /**
- * PC System Info MCP Server v1.2.0
+ * PC System Info MCP Server v2
  * - Supports Windows (PowerShell/CIM), macOS, and WSL (calls Windows-side PowerShell)
+ * - Windows: hybrid CPU topology, RAPL power, iGPU / NPU utilization
+ *   (user-mode APIs and performance counters only; no kernel drivers)
  * - Tool name aliases for local LLMs (Ollama etc.); extra arguments are ignored
  * - execFile-based invocation (no shell, no quoting pitfalls)
  * - Short-TTL result cache + in-flight request coalescing
- * - PRIVACY_MODE=1 redacts serial numbers / MAC / IP / DNS / gateway
+ * - PRIVACY_MODE: identifiers (serial / MAC / IP / DNS / gateway) are partially
+ *   masked by default; "full" (or "1") redacts them, "off" (or "0") shows them
  * - Unknown tools return an MCP error by default (MCP_LENIENT_MODE=1 restores
  *   the old "fall back to get_all_system_info" behavior for weak local LLMs)
  */
@@ -22,6 +25,7 @@ import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { readFileSync, existsSync } from "node:fs";
+import { applyPrivacy, parsePrivacyMode, type JsonValue } from "./privacy.js";
 
 const execFileAsync = promisify(execFile);
 const __filename = fileURLToPath(import.meta.url);
@@ -40,7 +44,7 @@ const SERVER_VERSION: string = (() => {
 })();
 
 // ── Feature flags ─────────────────────────────────────────
-const PRIVACY_MODE = process.env.PRIVACY_MODE === "1";
+const PRIVACY_MODE = parsePrivacyMode(process.env.PRIVACY_MODE);
 const LENIENT_MODE = process.env.MCP_LENIENT_MODE === "1";
 const CACHE_TTL_MS = Number(process.env.CACHE_TTL_MS ?? 3000);
 
@@ -84,29 +88,6 @@ async function buildInvocation(category: string): Promise<Invocation> {
   return { file: "bash", args: [MACOS_SH, category] };
 }
 
-type JsonValue =
-  | string | number | boolean | null
-  | JsonValue[]
-  | { [key: string]: JsonValue };
-
-// ── Privacy redaction ─────────────────────────────────────
-const REDACTED_KEYS = new Set([
-  "serialnumber", "macaddress", "ipaddress", "ipaddresses",
-  "dns", "gateway", "defaultipgateway",
-]);
-
-function redact(value: JsonValue): JsonValue {
-  if (Array.isArray(value)) return value.map(redact);
-  if (value !== null && typeof value === "object") {
-    const out: { [key: string]: JsonValue } = {};
-    for (const [k, v] of Object.entries(value)) {
-      out[k] = REDACTED_KEYS.has(k.toLowerCase()) ? "[REDACTED]" : redact(v);
-    }
-    return out;
-  }
-  return value;
-}
-
 // ── Fetch with TTL cache + in-flight coalescing ───────────
 const cache = new Map<string, { at: number; data: JsonValue }>();
 const inFlight = new Map<string, Promise<JsonValue>>();
@@ -135,6 +116,14 @@ async function fetchSystemInfoUncached(category: string): Promise<JsonValue> {
       platform: PLATFORM, isWSL: IS_WSL,
     };
   }
+  if (IS_MACOS && category === "power") {
+    return {
+      power: {
+        available: false,
+        note: "Power telemetry (RAPL via Windows Energy Meter) is Windows-only. On macOS, use `sudo powermetrics`.",
+      },
+    };
+  }
   const scriptFile = IS_WINDOWS ? WIN_PS1 : MACOS_SH;
   if (!existsSync(scriptFile)) {
     return { error: `Script not found: ${scriptFile}. Run "npm run build" first.` };
@@ -153,7 +142,7 @@ async function fetchSystemInfoUncached(category: string): Promise<JsonValue> {
     let parsed: JsonValue;
     try { parsed = JSON.parse(raw) as JsonValue; }
     catch { return { rawOutput: raw.slice(0, 2000), parseError: "JSON parse failed." }; }
-    return PRIVACY_MODE ? redact(parsed) : parsed;
+    return applyPrivacy(parsed, PRIVACY_MODE);
   } catch (execErr) {
     const e = execErr as { message?: string; code?: string | number; killed?: boolean; stderr?: string };
     return { error: e.message ?? "Unknown error", code: e.code ?? null, killed: e.killed ?? false };
@@ -176,17 +165,22 @@ const TOOLS: Tool[] = [
   },
   {
     name: "get_cpu_info",
-    description: "Get CPU info: name, cores, clock speed MHz, load %, temperature °C (hardware-dependent; may be null with an explanatory tempNote). No arguments needed.",
+    description: "Get CPU info: name, cores/threads, hybrid topology (P-core / E-core / LP E-core) with load per core type, L2/L3 cache, microcode, instruction sets (AVX2 etc.), load %, package power W, and temperature °C when the hardware exposes it (often null on Intel Core Ultra; see tempNote and use power as the load/heat indicator). No arguments needed.",
     inputSchema: NO_PARAM_SCHEMA,
   },
   {
     name: "get_gpu_info",
-    description: "Get GPU info. NVIDIA: temperature, utilization %, VRAM MB, fan %, power W, clocks MHz via nvidia-smi. AMD/Intel: name, VRAM, driver. No arguments needed.",
+    description: "List GPUs and NPUs; each entry has type discrete / integrated / npu. NVIDIA: temperature, utilization %, VRAM MB, fan %, power W, clocks via nvidia-smi. Intel/AMD integrated GPU: utilization %, busiest engine, shared memory MB, power W (Intel, RAPL); temperature is usually unavailable. NPU: utilization %. No arguments needed.",
+    inputSchema: NO_PARAM_SCHEMA,
+  },
+  {
+    name: "get_power_info",
+    description: "Get power draw in watts from RAPL (Windows Energy Meter counters): CPU package, CPU cores, integrated GPU, DRAM. Best available load/heat indicator when temperatures are not exposed. Windows only. No arguments needed.",
     inputSchema: NO_PARAM_SCHEMA,
   },
   {
     name: "get_ram_info",
-    description: "Get RAM: total/used/available GB, usage %, DIMM slots (capacity, speed MHz, DDR type). No arguments needed.",
+    description: "Get RAM: total/used/available GB, usage %, DIMM slots (capacity, speed MHz, DDR/LPDDR type). No arguments needed.",
     inputSchema: NO_PARAM_SCHEMA,
   },
   {
@@ -196,22 +190,22 @@ const TOOLS: Tool[] = [
   },
   {
     name: "get_disk_info",
-    description: "Get disk info: model, size GB, media type, interface, volume usage, read/write bytes/sec. No arguments needed.",
+    description: "Get disk info: model, size GB, media type, interface, serial number (partially masked by default), volume usage, read/write bytes/sec. No arguments needed.",
     inputSchema: NO_PARAM_SCHEMA,
   },
   {
     name: "get_network_info",
-    description: "Get network adapters: IP, MAC, DHCP, DNS, gateway, throughput bytes/sec. No arguments needed.",
+    description: "Get network adapters: IP, MAC, DHCP, DNS, gateway (identifiers partially masked by default), throughput bytes/sec. No arguments needed.",
     inputSchema: NO_PARAM_SCHEMA,
   },
   {
     name: "get_all_system_info",
-    description: "Get ALL PC metrics at once: overview+CPU+GPU+RAM+fans+disks+network. Use for full health check. No arguments needed.",
+    description: "Get ALL PC metrics at once: overview + CPU + GPU/NPU + power + RAM + fans + disks + network. Use for a full health check. No arguments needed.",
     inputSchema: NO_PARAM_SCHEMA,
   },
   {
     name: "get_server_info",
-    description: "Get MCP server info: platform, WSL status, feature flags. No arguments needed.",
+    description: "Get MCP server info: platform, WSL status, feature flags (privacy mode etc.). No arguments needed.",
     inputSchema: NO_PARAM_SCHEMA,
   },
 ];
@@ -237,6 +231,12 @@ const TOOL_ALIASES: Record<string, string> = {
   "storage_info":     "get_disk_info",
   "pc_network_info":  "get_network_info",
   "network_info":     "get_network_info",
+  "power_info":       "get_power_info",
+  "get_power":        "get_power_info",
+  "pc_power_info":    "get_power_info",
+  "energy_info":      "get_power_info",
+  "npu_info":         "get_gpu_info",
+  "get_npu_info":     "get_gpu_info",
   "system_overview":  "get_system_overview",
   "system_info":      "get_all_system_info",
   "all_system_info":  "get_all_system_info",
@@ -249,6 +249,7 @@ const TOOL_CATEGORY: Record<string, string> = {
   get_system_overview: "overview",
   get_cpu_info:        "cpu",
   get_gpu_info:        "gpu",
+  get_power_info:      "power",
   get_ram_info:        "ram",
   get_fan_info:        "fan",
   get_disk_info:       "disk",
@@ -279,6 +280,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           nodeVersion: process.version,
           privacyMode: PRIVACY_MODE, lenientMode: LENIENT_MODE, cacheTtlMs: CACHE_TTL_MS,
           calledAs: rawName !== name ? `${rawName} → ${name}` : name,
+          privacyModeHelp: "partial (default) = last 4 chars visible, full = [REDACTED], off = no masking",
           supportedOS: ["Windows 10 21H1+", "Windows 11", "macOS 12+", "WSL2"],
         }, null, 2),
       }],

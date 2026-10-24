@@ -1,3 +1,45 @@
+# v2.0.0 変更点
+
+出力JSONの構造が変わるため、メジャーバージョンを上げています。
+
+## 新機能(Windows)
+- **CPU構成**: P-core / E-core / LP E-core の数とスレッド数(`cpu.topology`)、コア種別ごとの負荷%(`cpu.loadByCoreType`)。Windows は E-core と LP E-core を同じ効率クラスで報告するため、L3キャッシュを共有しないE-coreを LP E-core と判定
+- **CPU詳細**: L2/L3キャッシュ(`cpu.cache`)、マイクロコード(`cpu.microcode`)、命令セット SSE3〜AVX-512F(`cpu.instructionSets`)、仮想化の有効状態(`cpu.virtualizationFirmwareEnabled`)
+- **消費電力**: 新ツール `get_power_info`。Windows標準のパフォーマンスカウンター「Energy Meter」(RAPL)から CPUパッケージ・CPUコア・内蔵GPU・DRAM の消費電力(W)を取得。`cpu.power` にもパッケージ/コア電力を追加
+- **内蔵GPU**: 使用率%・最も負荷の高いエンジン・共有/専用メモリ使用量(「GPU Engine」「GPU Adapter Memory」カウンター)、Intel内蔵GPUの消費電力(RAPL PP1)
+- **NPU**: Intel AI Boost 等の NPU を検出し使用率%を取得(`gpu` 配列に `type: "npu"` で追加)
+- いずれもカーネルドライバー・管理者権限・追加ソフト不要(ユーザーモードAPIとパフォーマンスカウンターのみ)
+
+## 出力JSONの変更(破壊的変更)
+- `gpu` 配列の各要素に `type`(`discrete` / `integrated` / `npu`)を追加。NPU が要素として加わる
+- `cpu` に `topology` / `cache` / `microcode` / `instructionSets` / `loadByCoreType` / `power` 等を追加
+- `all` カテゴリに `power` を追加
+- `overview.architecture` をローカライズされない値(例: `AMD64`)に変更(日本語Windowsで文字化けしていたため)
+- RAMの `type` は `SMBIOSMemoryType` を優先し、LPDDR4/LPDDR5 等も判定(従来はオンボードメモリが `Unknown` になっていた)
+
+## プライバシー(既定動作の変更)
+- `PRIVACY_MODE` を3段階に変更。**既定(未設定)で、シリアル番号・MAC・IP・DNS・ゲートウェイの末尾4文字以外をマスク**
+  - `full`(または `1`): 従来どおり `[REDACTED]`
+  - `off`(または `0`): マスクなし
+- v1.x の `PRIVACY_MODE=1`(隠す)・`0`(表示)の意味はそのまま維持し、既存設定で保護が外れることはありません
+- マスク処理を `src/privacy.ts` に分離し、テスト(`npm test`)を追加
+
+## 性能・堅牢性
+- パフォーマンスカウンターを全カテゴリ分まとめて1回だけサンプリング(`all` で約1秒)
+- 日本語など非英語Windowsで、カウンターのパス名が翻訳されて返る場合にも動作するようフォールバックを追加
+- ネットワークの送受信は別カウンターとして取得し、インターフェース名で結合
+
+## 調査の結果、採用しなかったもの
+- Intel Graphics Control Library(IGCL): Meteor Lake の内蔵GPUでは温度センサーが0件、テレメトリの温度も非対応であることを検証用プログラムで確認したため不採用
+- CPUID命令による温度取得: CPUIDは温度センサーの有無を返すのみで、温度の読み出し(MSR)にはカーネルドライバーが必要なため不可
+
+## CI
+- `npm test` を追加
+- Windowsスクリプトの全カテゴリについて JSON 妥当性を検証
+- Windowsスクリプトが ASCII のみで書かれていることを検査(Windows PowerShell 5.1 の文字コード対策)
+
+---
+
 # v1.2.0 変更点
 
 ## 改善

@@ -19,6 +19,13 @@ jobs:
       - run: npm ci
       - name: TypeScript build
         run: npm run build
+      - name: Unit tests (privacy masking)
+        run: npm test
+      - name: Windows script must be ASCII-only (Windows PowerShell 5.1 reads BOM-less files as ANSI)
+        run: |
+          if LC_ALL=C grep -nP '[^\x00-\x7F]' scripts/windows/get-system-info.ps1; then
+            echo "Non-ASCII characters found"; exit 1
+          fi
       - name: Syntax-check the macOS shell script
         run: bash -n scripts/macos/get-system-info.sh
       - name: ShellCheck (non-blocking)
@@ -59,8 +66,15 @@ jobs:
           cache: "npm"
       - run: npm ci
       - run: npm run build
-      - name: Run collector and validate JSON
+      - name: Run collector for every category and validate JSON (Windows PowerShell 5.1)
         shell: pwsh
         run: |
-          powershell -NonInteractive -NoProfile -ExecutionPolicy Bypass -File scripts/windows/get-system-info.ps1 -Category all | Out-File -Encoding utf8 out.json
-          node -e "const fs=require('fs');const t=fs.readFileSync('out.json','utf8').replace(/^\uFEFF/,'');JSON.parse(t);console.log('Windows output is valid JSON');"
+          $cats = "cpu","gpu","power","ram","fan","disk","network","overview","all"
+          foreach ($c in $cats) {
+            powershell -NonInteractive -NoProfile -ExecutionPolicy Bypass -File scripts/windows/get-system-info.ps1 -Category $c | Out-File -Encoding utf8 "out-$c.json"
+            node -e "const fs=require('fs');const t=fs.readFileSync('out-$c.json','utf8').replace(/^\uFEFF/,'');JSON.parse(t);console.log('$c: valid JSON');"
+            if ($LASTEXITCODE -ne 0) { exit 1 }
+          }
+      - name: Show cpu / gpu / power output
+        shell: pwsh
+        run: Get-Content out-cpu.json, out-gpu.json, out-power.json
