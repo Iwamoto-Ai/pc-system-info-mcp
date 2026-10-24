@@ -410,7 +410,8 @@ function Get-CPUInfo {
             $lo = [BitConverter]::ToUInt32($rev, 0)
             $hi = if ($rev.Length -ge 8) { [BitConverter]::ToUInt32($rev, 4) } else { [uint32]0 }
             $mc = if ($lo -ne 0) { $lo } else { $hi }
-            if ($mc -ne 0) { $microcode = "0x{0:X}" -f $mc }
+            # 0xFFFFFFFF is reported by some hypervisors and means "unknown"
+            if ($mc -ne 0 -and $mc -ne [uint32]::MaxValue) { $microcode = "0x{0:X}" -f $mc }
         }
     } catch {}
 
@@ -523,12 +524,15 @@ function Get-GPUInfo {
         $dedicatedMB = $null
         if ($luid -and $null -ne $dx[$luid].dedicatedMB) { $dedicatedMB = $dx[$luid].dedicatedMB }
         $type = "integrated"
-        if ($vendor -eq "NVIDIA") { $type = "discrete" }
+        if ($g.Name -match "Hyper-V|VMware|VirtualBox|Parallels|Remote Display|Citrix|Virtual Display") { $type = "virtual" }
+        elseif ($vendor -eq "NVIDIA") { $type = "discrete" }
         elseif ($null -ne $dedicatedMB -and $dedicatedMB -ge 1024) { $type = "discrete" }
         elseif ($null -eq $dedicatedMB -and $g.Name -match "Arc\(TM\) [AB]\d|Radeon RX") { $type = "discrete" }
 
         $u = if ($luid) { $usage[$luid] } else { $null }
-        $gpuTempNote = if ($type -eq "integrated") {
+        $gpuTempNote = if ($type -eq "virtual") {
+            "Virtual display adapter; no hardware telemetry is available."
+        } elseif ($type -eq "integrated") {
             "Integrated GPU temperature is not exposed by the graphics driver (verified with Intel IGCL on Meteor Lake)."
         } elseif ($vendor -eq "NVIDIA") {
             "nvidia-smi was not found; install or update the NVIDIA driver for temperature and full telemetry."

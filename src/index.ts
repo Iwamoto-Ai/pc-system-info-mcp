@@ -170,7 +170,7 @@ const TOOLS: Tool[] = [
   },
   {
     name: "get_gpu_info",
-    description: "List GPUs and NPUs; each entry has type discrete / integrated / npu. NVIDIA: temperature, utilization %, VRAM MB, fan %, power W, clocks via nvidia-smi. Intel/AMD integrated GPU: utilization %, busiest engine, shared memory MB, power W (Intel, RAPL); temperature is usually unavailable. NPU: utilization %. No arguments needed.",
+    description: "List GPUs and NPUs; each entry has type discrete / integrated / virtual / npu. NVIDIA: temperature, utilization %, VRAM MB, fan %, power W, clocks via nvidia-smi. Intel/AMD integrated GPU: utilization %, busiest engine, shared memory MB, power W (Intel, RAPL); temperature is usually unavailable. NPU: utilization %. No arguments needed.",
     inputSchema: NO_PARAM_SCHEMA,
   },
   {

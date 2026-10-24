@@ -56,7 +56,7 @@ CPU/GPU/NPU稼働状況、消費電力、RAM/VRAM、ディスク、ネットワ�
 | --- | --- |
 | `get_system_overview` | システム全体の概要 |
 | `get_cpu_info` | CPU情報(負荷、温度は取得可能な環境のみ) |
-| `get_gpu_info` | GPU・NPU情報(各要素に `type`: discrete / integrated / npu。NVIDIAは完全テレメトリ) |
+| `get_gpu_info` | GPU・NPU情報(各要素に `type`: discrete / integrated / virtual / npu。NVIDIAは完全テレメトリ) |
 | `get_power_info` | 消費電力(CPUパッケージ・コア・内蔵GPU・DRAM、Windowsのみ) |
 | `get_ram_info` | RAM使用状況・DIMMスロット |
 | `get_fan_info` | ファン情報(取得可否と理由を含む) |

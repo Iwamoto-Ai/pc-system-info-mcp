@@ -11,7 +11,7 @@
 - いずれもカーネルドライバー・管理者権限・追加ソフト不要(ユーザーモードAPIとパフォーマンスカウンターのみ)
 
 ## 出力JSONの変更(破壊的変更)
-- `gpu` 配列の各要素に `type`(`discrete` / `integrated` / `npu`)を追加。NPU が要素として加わる
+- `gpu` 配列の各要素に `type`(`discrete` / `integrated` / `virtual` / `npu`)を追加。NPU が要素として加わる
 - `cpu` に `topology` / `cache` / `microcode` / `instructionSets` / `loadByCoreType` / `power` 等を追加
 - `all` カテゴリに `power` を追加
 - `overview.architecture` をローカライズされない値(例: `AMD64`)に変更(日本語Windowsで文字化けしていたため)
