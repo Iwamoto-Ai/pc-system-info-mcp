@@ -77,7 +77,7 @@ jobs:
           foreach ($c in $cats) {
             $out = powershell -NonInteractive -NoProfile -ExecutionPolicy Bypass -File scripts/windows/get-system-info.ps1 -Category $c 2> "err-$c.txt"
             $out | Out-File -Encoding utf8 "out-$c.json"
-            $msg = node -e "const fs=require('fs');const t=fs.readFileSync('out-$c.json','utf8').replace(/^\uFEFF/,'');JSON.parse(t);console.log('$c: valid JSON');" 2>&1
+            $msg = node -e "const fs=require('fs');const t=fs.readFileSync('out-$c.json','utf8').replace(/^\uFEFF/,'');JSON.parse(t);console.log('${c} valid JSON');" 2>&1
             if ($LASTEXITCODE -ne 0) {
               $failed += $c
               $body = (Get-Content "out-$c.json" -Raw)
