@@ -4,7 +4,7 @@
 
 ## 新機能(Windows)
 - **CPU構成**: P-core / E-core / LP E-core の数とスレッド数(`cpu.topology`)、コア種別ごとの負荷%(`cpu.loadByCoreType`)。Windows は E-core と LP E-core を同じ効率クラスで報告するため、L3キャッシュを共有しないE-coreを LP E-core と判定
-- **CPU詳細**: L2/L3キャッシュ(`cpu.cache`)、マイクロコード(`cpu.microcode`)、命令セット SSE3〜AVX-512F(`cpu.instructionSets`)、仮想化の有効状態(`cpu.virtualizationFirmwareEnabled`)
+- **CPU詳細**: L2/L3キャッシュ(`cpu.cache`)、マイクロコード(`cpu.microcode`)、命令セット SSE3〜AVX-512F(`cpu.instructionSets`)、仮想化の状態(`cpu.virtualization`。Hyper-V/WSL2 稼働中はハイパーバイザーの存在から有効と判定)
 - **消費電力**: 新ツール `get_power_info`。Windows標準のパフォーマンスカウンター「Energy Meter」(RAPL)から CPUパッケージ・CPUコア・内蔵GPU・DRAM の消費電力(W)を取得。`cpu.power` にもパッケージ/コア電力を追加
 - **内蔵GPU**: 使用率%・最も負荷の高いエンジン・共有/専用メモリ使用量(「GPU Engine」「GPU Adapter Memory」カウンター)、Intel内蔵GPUの消費電力(RAPL PP1)
 - **NPU**: Intel AI Boost 等の NPU を検出し使用率%を取得(`gpu` 配列に `type: "npu"` で追加)
@@ -32,6 +32,9 @@
 ## 調査の結果、採用しなかったもの
 - Intel Graphics Control Library(IGCL): Meteor Lake の内蔵GPUでは温度センサーが0件、テレメトリの温度も非対応であることを検証用プログラムで確認したため不採用
 - CPUID命令による温度取得: CPUIDは温度センサーの有無を返すのみで、温度の読み出し(MSR)にはカーネルドライバーが必要なため不可
+
+## 依存パッケージ
+- `@modelcontextprotocol/sdk` を 1.29.0 → 1.32.2 に更新し、`npm audit fix` を適用(既知の脆弱性 0 件)
 
 ## CI
 - `npm test` を追加

@@ -399,8 +399,17 @@ function Get-CPUInfo {
             }
         } catch {}
     }
+    # Virtualization. While a hypervisor is running (Hyper-V, which WSL2 / Docker
+    # Desktop / VBS use), Windows itself runs as a guest and the firmware flag
+    # reads as false even though VT-x/AMD-V is enabled - so a running
+    # hypervisor counts as "enabled".
     $virtFw = $null
     if (Initialize-Native) { try { $virtFw = [PcsiNative]::Feature(21) } catch {} }
+    $hvPresent = $null
+    try { $hvPresent = [bool](Get-CimInstance -ClassName Win32_ComputerSystem -ErrorAction Stop).HypervisorPresent } catch {}
+    $virtEnabled = if ($hvPresent -eq $true -or $virtFw -eq $true) { $true }
+                   elseif ($null -eq $hvPresent -and $null -eq $virtFw) { $null }
+                   else { $false }
 
     # --- Microcode revision (registry "Update Revision", REG_BINARY) ---
     $microcode = $null
@@ -451,7 +460,7 @@ function Get-CPUInfo {
         cache           = [ordered]@{ l2KB = $cpu.L2CacheSize; l3KB = $cpu.L3CacheSize }
         microcode       = $microcode
         instructionSets = $isa
-        virtualizationFirmwareEnabled = $virtFw
+        virtualization  = [ordered]@{ enabled = $virtEnabled; hypervisorPresent = $hvPresent }
         load            = $loadPct
         loadByCoreType  = $loadByType
         power           = [ordered]@{ packageW = $rapl.packageW; coresW = $rapl.coresW }
