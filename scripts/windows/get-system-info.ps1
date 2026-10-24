@@ -384,6 +384,27 @@ function Get-CPUInfo {
         } catch {}
     }
 
+    # --- Overall load fallback ---
+    # Win32_Processor.LoadPercentage is sometimes null on Windows 11. Fall back
+    # to the same counter that loadByCoreType uses (Task Manager's "Utility"):
+    # the _Total instance first, then the average of all logical processors.
+    $loadSource = if ($null -ne $loadPct) { "Win32_Processor" } else { $null }
+    if ($null -eq $loadPct) {
+        $util  = @(Get-Perf "Processor Information" "% Processor Utility")
+        $total = $util | Where-Object { $_.InstanceName -eq "_total" } | Select-Object -First 1
+        if ($total) {
+            $loadPct    = [math]::Round([math]::Min(100.0, $total.CookedValue), 1)
+            $loadSource = "Processor Information counter (_Total)"
+        } else {
+            $perCpu = @($util | Where-Object { $_.InstanceName -match '^\d+,\d+$' } |
+                        ForEach-Object { [math]::Min(100.0, $_.CookedValue) })
+            if ($perCpu.Count -gt 0) {
+                $loadPct    = [math]::Round(($perCpu | Measure-Object -Average).Average, 1)
+                $loadSource = "Processor Information counter (average of logical processors)"
+            }
+        }
+    }
+
     # --- Instruction sets (IsProcessorFeaturePresent) ---
     $isa = $null
     if (Initialize-Native) {
@@ -462,6 +483,7 @@ function Get-CPUInfo {
         instructionSets = $isa
         virtualization  = [ordered]@{ enabled = $virtEnabled; hypervisorPresent = $hvPresent }
         load            = $loadPct
+        loadSource      = $loadSource
         loadByCoreType  = $loadByType
         power           = [ordered]@{ packageW = $rapl.packageW; coresW = $rapl.coresW }
         temperatureC    = $tempC
