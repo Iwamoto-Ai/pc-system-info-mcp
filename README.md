@@ -185,7 +185,18 @@ Intel Core Ultra(Meteor Lake / Arrow Lake)世代は標準WMIで温度を公開�
 
 温度が取れない環境では、`get_power_info` / `cpu.power` の**消費電力**を負荷・発熱の目安として使ってください(消費電力と発熱はほぼ比例します)。
 
-> LibreHardwareMonitor / OpenHardwareMonitor を使えばCPU温度・ファンRPMを取得できますが、依存ドライバー WinRing0.sys の脆弱性(CVE-2020-14979)のため本プロジェクトでは対応していません。
+#### 検討したが採用しなかった方法
+
+Windows で CPU温度を取得するために検討し、以下の理由で採用していない方法です。
+
+| 方法 | 不採用の理由 |
+| --- | --- |
+| LibreHardwareMonitor / OpenHardwareMonitor | 依存ドライバー WinRing0.sys に既知の脆弱性(CVE-2020-14979)があり、Microsoft Defender に検出される |
+| HWMonitor(CPUID)の自動操作 | API がなく、ログ保存に SendKeys が必要で他の作業を妨害する |
+| Intel Graphics Control Library(IGCL) | Meteor Lake の内蔵GPUでは温度センサーが0件で、温度は非対応(検証用プログラムで確認) |
+| CPUID 命令 | 温度センサーの有無を返すだけで、温度の読み出し(MSR)にはカーネルドライバーが必要 |
+| Intel Power Gadget | 温度は取得できるが、提供終了済み。カーネルドライバーを使用し、一般ユーザーから特権昇格できる脆弱性(最大 CVSS 8.8、[INTEL-SA-01037](https://www.intel.com/content/www/us/en/security-center/advisory/intel-sa-01037.html))があり、Intel は修正せずアンインストールを推奨している |
+| Intel PCM(Power Gadget の後継) | Windows では MSR を読むための専用ドライバーを自分でビルド・署名する必要があり、一般向けではない |
 
 ### macOS
 
