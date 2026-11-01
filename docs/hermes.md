@@ -6,11 +6,29 @@
 - Windowsの場合は WSL (Windows Subsystem for Linux) で動作させている想定
 
 > **⚠️ Hermes Agent の注意点**
-> - LLMモデルは必ずMCPツール使用の性能が高いものを使う必要があります(例: llama-3.3-70b-versatile、qwen3:14b)
+> - LLMモデルは必ずMCPツール使用の性能が高いものを使う必要があります(例: qwen3:14b、qwen3.5:9b)
 > - `display.language` を `ja` に変更
-> - `tool_use_enforcement: strict` に変更しないとツールを呼べないようです
-> - コンテキスト長の調整が必要な場合が多いです(例: `context_length: 65536` と `ollama_num_ctx: 65536` の行を追加)
+> - `tool_use_enforcement: strict` auto から strict に変更
+> - **コンテキストサイズは65536以上必須。**
+　　(例: `context_length: 65536` と `ollama_num_ctx: 65536` の行を追加)　
+
+モデルをカスタムビルド例、
+`.Modelfile`
+```
+FROM qwen3.5:9b
+PARAMETER num_ctx 65536
+```
+
+```powershell
+ollama create qwen3.5:9b_ctx64k -f ./Modelfile
+```
+この例では、 model名　qwen3.5:9b_ctx64k　で作成されますので、設定はこのmodel名を指定します。
+
+
+
 > - 大量のトークンを必要とします。不要なツールセットを無効化するなどしてトークンを減らす工夫も必要です
+
+
 
 ## MCPサーバーの登録
 
@@ -25,9 +43,10 @@ mcp_servers:
     sessionIdleTtlMs: 600000
 ```
 
-## モデル設定例(OpenRouterの自動ルーティング)
 
-`.hermes/config.yaml`:
+## OpenRouter を使った model自動ルーティング設定例
+
+`.hermes/config.yaml`
 
 ```yaml
 model:
