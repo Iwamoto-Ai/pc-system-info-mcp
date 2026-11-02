@@ -8,25 +8,30 @@
 > **⚠️ Hermes Agent の注意点**
 > - LLMモデルは必ずMCPツール使用の性能が高いものを使う必要があります(例: qwen3:14b、qwen3.5:9b)
 > - `display.language` を `ja` に変更
-> - `tool_use_enforcement: strict` auto から strict に変更
-> - **コンテキストサイズは65536以上必須。**
-　　(例: `context_length: 65536` と `ollama_num_ctx: 65536` の行を追加)　
+> - `tool_use_enforcement: strict` 　（auto から strict に変更）
+> - 大量のトークンを必要とします。不要なツールセットを無効化するなどして工夫も必要です
+> - **コンテキストサイズは65536以上必須。**(例: `context_length: 65536` と `ollama_num_ctx: 65536` の行を追加)　
+<br>
 
-モデルをカスタムビルド例、
-`.Modelfile`
-```
+
+
+## モデルコンテキストサイズ拡張カスタムビルド（Ollama）
+Modelfile の書き方
+Ollama 公式では Modelfile を「カスタムモデルの設計図」と説明しています。
+FROM は必須で、SYSTEM や PARAMETER によりモデル挙動を固定できます。
+
+```Plain Text
+#`Modelfile` ファイルの例
 FROM qwen3.5:9b
 PARAMETER num_ctx 65536
 ```
 
 ```powershell
+# PowerShell コマンド例
 ollama create qwen3.5:9b_ctx64k -f ./Modelfile
 ```
 この例では、 model名　qwen3.5:9b_ctx64k　で作成されますので、設定はこのmodel名を指定します。
-
-
-
-> - 大量のトークンを必要とします。不要なツールセットを無効化するなどしてトークンを減らす工夫も必要です
+<br>
 
 
 
